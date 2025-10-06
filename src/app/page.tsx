@@ -5,6 +5,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Moon, Sun } from "lucide-react";
+import Image from "next/image";
 
 /**
  * Minimalistic, elegant belt gallery (with theme + gallery persistence)
@@ -35,7 +36,7 @@ export default function Page() {
   });
 
   // Load gallery images from localStorage or defaults; supports Img[] and string[]
-  const [images, setImages] = useState<string[]>(() => {
+  const [images] = useState<string[]>(() => {
     if (typeof window === "undefined") return DEFAULTS;
     try {
       const raw = window.localStorage.getItem(GALLERY_KEY);
@@ -57,13 +58,12 @@ export default function Page() {
   }, [isDark]);
 
   // Seed gallery if empty
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const existing = window.localStorage.getItem(GALLERY_KEY);
-    if (!existing) {
-      try { window.localStorage.setItem(GALLERY_KEY, JSON.stringify(images)); } catch {}
-    }
-  }, []);
+ useEffect(() => {
+   if (typeof window === "undefined") return;
+   if (!window.localStorage.getItem(GALLERY_KEY)) {
+     try { window.localStorage.setItem(GALLERY_KEY, JSON.stringify(DEFAULTS)); } catch {}
+   }
+ }, []);
 
   // Group into rows of 3
   const rows = useMemo(() => {
@@ -120,12 +120,15 @@ export default function Page() {
                     key={`${i}-${j}`}
                     className="group relative aspect-[3/4] overflow-hidden rounded-2xl border border-black/10 bg-neutral-100 shadow-sm transition-colors dark:border-white/10 dark:bg-white/5"
                   >
-                    <img
-                      src={src}
-                      alt={`Belt ${i + 1} — shot ${j + 1}`}
-                      loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-                    />
+ <div className="relative h-full w-full">
+   <Image
+     src={src}
+     alt={`Belt ${i + 1} — shot ${j + 1}`}
+     fill
+     sizes="(max-width: 1024px) 33vw, 33vw"
+     className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+   />
+ </div>
                   </figure>
                 ))}
               </div>

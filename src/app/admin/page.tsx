@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import { Upload, Trash2, GripVertical } from "lucide-react";
-
+import Link from "next/link";
+import Image from "next/image";
 const GALLERY_KEY = "GALLERY_IMAGES"; // shared with public page
 
 type Img = { src: string };
@@ -150,7 +151,7 @@ export default function AdminPage() {
     <main className="min-h-screen bg-white text-neutral-900 transition-colors duration-300 dark:bg-neutral-950 dark:text-zinc-100">
       <header className="sticky top-0 z-40 border-b border-black/5 bg-white/70 backdrop-blur dark:border-white/10 dark:bg-black/40">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <a href="/" className="text-lg font-semibold">Admin Panel</a>
+          <Link href="/"className="text-lg font-semibold">Admin Panel</Link>
         </div>
       </header>
 
@@ -196,16 +197,23 @@ export default function AdminPage() {
                     onDrop={() => onDrop(idx)}
                   >
                     <figure className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-black/10 bg-neutral-100 shadow-sm transition-colors dark:border-white/10 dark:bg-white/5">
-                      <img src={it.src} alt={`Image ${idx + 1}`} className="h-full w-full object-cover" />
-                      {/* Drag handle / hint */}
+ <div className="relative h-full w-full">
+   <Image
+     src={it.src}
+     alt={`Image ${idx + 1}`}
+     fill
+     className="object-cover"
+     sizes="(max-width: 1024px) 33vw, 33vw"
+   />
+ </div>                      {/* Drag handle / hint */}
                       <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 p-2 opacity-0 transition-opacity group-hover:opacity-100">
                         <span className="rounded-md bg-black/50 px-2 py-0.5 text-[10px] text-white">
                           {idx + 1}
                         </span>
-                        <span className="flex items-center gap-1 rounded-md bg-black/50 px-2 py-0.5 text-[10px] text-white">
-                          <GripVertical className="h-3.5 w-3.5" />
-                          Drag to reorder
-                        </span>
+ <span className="flex items-center gap-1 rounded-md bg-black/50 px-2 py-0.5 text-[10px] text-white">
+   <GripVertical className="h-3.5 w-3.5" />
+   Drag to reorder
+ </span>
                       </div>
                     </figure>
 
