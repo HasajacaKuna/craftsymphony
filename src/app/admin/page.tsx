@@ -1,19 +1,31 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Upload, Trash2, GripVertical } from "lucide-react";
+import { Upload, Trash2, GripVertical, LogOut } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-const GALLERY_KEY = "GALLERY_IMAGES"; // shared with public page
+
+const GALLERY_KEY = "GALLERY_IMAGES";        // shared with public page
+const ADMIN_AUTH_KEY = "ADMIN_AUTH_OK";      // remembers that user passed the password
 
 type Img = { src: string };
 
 export default function AdminPage() {
-  // ---- state (HOOKS ALWAYS FIRST) ----
+  // ---- auth (HOOKS ALWAYS FIRST) ----
   const [authorized, setAuthorized] = useState(false);
   const [inputPass, setInputPass] = useState("");
+  // hasło trzymamy w publicznym ENV (świadomie – to prosty gate po stronie klienta)
   const expected = process.env.NEXT_PUBLIC_ADMIN_PASS ?? "haslo123";
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const ok = window.localStorage.getItem(ADMIN_AUTH_KEY) === "1";
+      if (ok) setAuthorized(true);
+    } catch {}
+  }, []);
+
+  // ---- gallery state ----
   const [items, setItems] = useState<Img[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -44,9 +56,7 @@ export default function AdminPage() {
     setItems(next);
     try {
       window.localStorage.setItem(GALLERY_KEY, JSON.stringify(next));
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   function readAsDataURL(file: File): Promise<string> {
@@ -81,34 +91,22 @@ export default function AdminPage() {
     save(next);
   }
 
-  function onDragStart(idx: number) {
-    setDragIndex(idx);
-  }
-  function onDragEnter(idx: number) {
-    setDragOverIndex(idx);
-  }
-  function onDragOver(e: React.DragEvent) {
-    e.preventDefault(); // allow drop
-  }
+  function onDragStart(idx: number) { setDragIndex(idx); }
+  function onDragEnter(idx: number) { setDragOverIndex(idx); }
+  function onDragOver(e: React.DragEvent) { e.preventDefault(); } // allow drop
   function onDrop(targetIdx: number) {
     if (dragIndex === null) return;
-    const from = dragIndex;
-    const to = targetIdx;
-    setDragIndex(null);
-    setDragOverIndex(null);
+    const from = dragIndex, to = targetIdx;
+    setDragIndex(null); setDragOverIndex(null);
     if (from === to) return;
-
     const next = items.slice();
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     save(next);
   }
-  function onDragEnd() {
-    setDragIndex(null);
-    setDragOverIndex(null);
-  }
+  function onDragEnd() { setDragIndex(null); setDragOverIndex(null); }
 
-  // ---- password screen (keep AFTER all hooks) ----
+  // ---- password screen (client-only) ----
   if (!authorized) {
     return (
       <main className="min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-zinc-100">
@@ -116,7 +114,10 @@ export default function AdminPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (inputPass === expected) setAuthorized(true);
+              if (inputPass === expected) {
+                try { window.localStorage.setItem(ADMIN_AUTH_KEY, "1"); } catch {}
+                setAuthorized(true);
+              }
             }}
             className="w-full rounded-2xl border border-black/10 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5"
           >
@@ -151,7 +152,14 @@ export default function AdminPage() {
     <main className="min-h-screen bg-white text-neutral-900 transition-colors duration-300 dark:bg-neutral-950 dark:text-zinc-100">
       <header className="sticky top-0 z-40 border-b border-black/5 bg-white/70 backdrop-blur dark:border-white/10 dark:bg-black/40">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/"className="text-lg font-semibold">Admin Panel</Link>
+          <Link href="/" className="text-lg font-semibold">Admin Panel</Link>
+          <button
+            onClick={() => { try { localStorage.removeItem(ADMIN_AUTH_KEY); } catch {} ; setAuthorized(false); }}
+            className="inline-flex items-center gap-2 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/20"
+            title="Log out"
+          >
+            <LogOut className="h-4 w-4" /> Log out
+          </button>
         </div>
       </header>
 
@@ -159,30 +167,22 @@ export default function AdminPage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {/* Upload */}
           <div className="rounded-2xl border border-black/10 p-4 dark:border-white/10">
-            <h2 className="text-base font-medium">Upload images</h2>
+            <h2 className="text/base font-medium">Upload images</h2>
             <div className="mt-3">
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-white/90 dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/15">
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={onFilesSelected}
-                  className="sr-only"
-                />
+                <input type="file" accept="image/*" multiple onChange={onFilesSelected} className="sr-only" />
                 <Upload className="h-4 w-4" />
                 {isUploading ? "Uploading…" : "Choose files"}
               </label>
             </div>
           </div>
 
-          {/* Grid (same look as public) */}
+          {/* Grid */}
           <div className="mt-8">
             <h2 className="text-base font-medium">Current images ({items.length})</h2>
 
             {items.length === 0 ? (
-              <p className="mt-4 text-sm text-neutral-600 dark:text-zinc-400">
-                No images yet. Upload to get started.
-              </p>
+              <p className="mt-4 text-sm text-neutral-600 dark:text-zinc-400">No images yet. Upload to get started.</p>
             ) : (
               <div className="mt-4 grid grid-cols-3 gap-6">
                 {items.map((it, idx) => (
@@ -197,49 +197,48 @@ export default function AdminPage() {
                     onDrop={() => onDrop(idx)}
                   >
                     <figure className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-black/10 bg-neutral-100 shadow-sm transition-colors dark:border-white/10 dark:bg-white/5">
- <div className="relative h-full w-full">
-   <Image
-     src={it.src}
-     alt={`Image ${idx + 1}`}
-     fill
-     className="object-cover"
-     sizes="(max-width: 1024px) 33vw, 33vw"
-   />
- </div>                      {/* Drag handle / hint */}
+                      <div className="relative h-full w-full">
+                        <Image
+                          src={it.src}
+                          alt={`Image ${idx + 1}`}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 1024px) 33vw, 33vw"
+                        />
+                      </div>
+                      {/* Drag handle / hint */}
                       <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 p-2 opacity-0 transition-opacity group-hover:opacity-100">
-                        <span className="rounded-md bg-black/50 px-2 py-0.5 text-[10px] text-white">
-                          {idx + 1}
+                        <span className="rounded-md bg-black/50 px-2 py-0.5 text-[10px] text-white">{idx + 1}</span>
+                        <span className="flex items-center gap-1 rounded-md bg-black/50 px-2 py-0.5 text-[10px] text-white">
+                          <GripVertical className="h-3.5 w-3.5" />
+                          Drag to reorder
                         </span>
- <span className="flex items-center gap-1 rounded-md bg-black/50 px-2 py-0.5 text-[10px] text-white">
-   <GripVertical className="h-3.5 w-3.5" />
-   Drag to reorder
- </span>
                       </div>
                     </figure>
 
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                        <button
-                            onClick={() => move(idx, -1)}
-                            className="w-[33%] rounded-lg border border-black/20 bg-neutral-200 py-2 text-sm font-medium text-black hover:bg-neutral-300 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
-                        >
-                            ↑ Up
-                        </button>
-                        <button
-                            onClick={() => move(idx, 1)}
-                            className="w-[33%] rounded-lg border border-black/20 bg-neutral-200 py-2 text-sm font-medium text-black hover:bg-neutral-300 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
-                        >
-                            ↓ Down
-                        </button>
-                        <button
-                            onClick={() => {
-                            const next = items.filter((_, i) => i !== idx);
-                            save(next);
-                            }}
-                            className="w-[33%] rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700"
-                        >
-                            ✕ Delete
-                        </button>
-                        </div>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => move(idx, -1)}
+                        className="w-[33%] rounded-lg border border-black/20 bg-neutral-200 py-2 text-sm font-medium text-black hover:bg-neutral-300 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                      >
+                        ↑ Up
+                      </button>
+                      <button
+                        onClick={() => move(idx, 1)}
+                        className="w-[33%] rounded-lg border border-black/20 bg-neutral-200 py-2 text-sm font-medium text-black hover:bg-neutral-300 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                      >
+                        ↓ Down
+                      </button>
+                      <button
+                        onClick={() => {
+                          const next = items.filter((_, i) => i !== idx);
+                          save(next);
+                        }}
+                        className="w-[33%] rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700"
+                      >
+                        ✕ Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
