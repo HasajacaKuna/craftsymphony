@@ -268,9 +268,9 @@ function CategoryPreview({
 
       <div className="mt-6 md:mt-8 text-center">
         <div className="text-center mb-3">
-          <h3 className="font-serif text-base sm:text-lg tracking-wide">
-            {t.numberLabel}\u00a0{active + 1}\u00a0{belt?.name ?? "—"}
-          </h3>
+<h3 className="font-serif text-base sm:text-lg tracking-wide">
+  {t.numberLabel} {active + 1} {belt?.name ?? "—"}
+</h3>
           <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">{belt?.description ?? "—"}</p>
         </div>
 
