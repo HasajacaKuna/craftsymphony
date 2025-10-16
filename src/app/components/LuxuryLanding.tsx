@@ -149,51 +149,45 @@ function formatPriceForLang(price: string | number | undefined, lang: Lang) {
   }).format(usd);
 }
 
-
 /* ===== Sekcja kategorii (renderuje tylko to, co przyjdzie z API) ===== */
 function CategorySection({
   title,
   images = [],
   items,
   labels,
-  lang,                  // <<<<<< DODANE
+  lang,
 }: CategoryData & { labels: Labels; lang: Lang }) {
-  // Jeżeli brak danych – nie renderuj sekcji
-  const count = Math.min(images.length, items.length);
-  if (count === 0) return null;
-
-  const displayImages = images.slice(0, count);
-  const displayItems = items.slice(0, count);
-
+  // 1) HOOKI ZAWSZE NA GÓRZE (zero warunków/returnów przed nimi)
   const [active, setActive] = useState(0);
   const [scrollIndex, setScrollIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
-  const VISIBLE = 4; // desktop – ile miniaturek w pionie
+  // Stałe UI
+  const VISIBLE = 4;
   const THUMB_H = 96;
   const GAP = 12;
+  const ySpring = useSpring(0, { stiffness: 120, damping: 20 });
 
-  const ySpring = useSpring(-(scrollIndex * (THUMB_H + GAP)), {
-    stiffness: 120,
-    damping: 20,
-  });
+  // 2) LOGIKA DANYCH (może być warunkowa, ale bez wpływu na hooki)
+  const count = Math.min(images.length, items.length);
+  const displayImages = images.slice(0, count);
+  const displayItems = items.slice(0, count);
+  const belt = displayItems[active];
 
-  const scrollUp = () => setScrollIndex((s) => Math.max(0, s - 1));
-  const scrollDown = () =>
-    setScrollIndex((s) => Math.min(displayImages.length - VISIBLE, s + 1));
-
-  // utrzymuj aktywną miniaturę w widoku
+  // Utrzymanie widoczności aktywnej miniatury
   useEffect(() => {
+    if (count === 0) return;
     if (active < scrollIndex) setScrollIndex(active);
     if (active > scrollIndex + VISIBLE - 1)
       setScrollIndex(active - (VISIBLE - 1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+  }, [active, count]);
 
+  // Aktualizacja sprężyny przesuwu listy miniaturek
   useEffect(() => {
+    if (count === 0) return;
     ySpring.set(-(scrollIndex * (THUMB_H + GAP)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scrollIndex]);
+  }, [count, scrollIndex, ySpring]);
 
   // Swipe (mobile)
   const onTouchStart = (e: React.TouchEvent) =>
@@ -211,7 +205,13 @@ function CategorySection({
     setTouchStartX(null);
   };
 
-  const belt = displayItems[active];
+  // Scroll przyciski (miniatury / desktop)
+  const maxScrollIndex = Math.max(0, displayImages.length - VISIBLE);
+  const scrollUp = () => setScrollIndex((s) => Math.max(0, s - 1));
+  const scrollDown = () => setScrollIndex((s) => Math.min(maxScrollIndex, s + 1));
+
+  // Po hookach można bezpiecznie warunkowo nie renderować
+  if (count === 0) return null;
 
   return (
     <div>
@@ -238,9 +238,7 @@ function CategorySection({
             >
               <Image
                 src={displayImages[active]}
-                alt={`${labels.heroAltPrefix} ${
-                  belt?.name ?? `${active + 1}`
-                }`}
+                alt={`${labels.heroAltPrefix} ${belt?.name ?? `${active + 1}`}`}
                 fill
                 sizes="100vw"
                 className="object-cover"
@@ -348,7 +346,7 @@ function CategorySection({
         </div>
 
         <div className="max-w-4xl mx-auto">
-          <div className="text-center text-sm text-neutral-600 mb-[-48] ">
+          <div className="text-center text-sm text-neutral-600 mb-[-48px]">
             {belt?.upperSize ?? "—"}
           </div>
 
@@ -365,16 +363,16 @@ function CategorySection({
             </div>
           </div>
 
-          <div className="text-center text-sm text-neutral-600 mt-[-48]">
+          <div className="text-center text-sm text-neutral-600 mt-[-48px]">
             {belt?.lowerSize ?? "—"}
           </div>
         </div>
 
         <p className="mt-8 text-center text-[13px] text-neutral-600 mb-16 italic">
-  {labels.price}{" "}
-  <span className="font-medium tracking-wide">
-    {formatPriceForLang(belt?.price, lang)}
-  </span>
+          {labels.price}{" "}
+          <span className="font-medium tracking-wide">
+            {formatPriceForLang(belt?.price, lang)}
+          </span>
         </p>
       </div>
     </div>
@@ -397,16 +395,18 @@ export default function LuxuryLanding({
   useEffect(() => {
     const saved =
       typeof window !== "undefined"
-        ? (localStorage.getItem("cs_lang") as Lang | null)
+        ? ((localStorage.getItem("cs_lang") as Lang | null) || null)
         : null;
     if (saved) setLang(saved);
   }, []);
+
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("cs_lang", lang);
-      try {
-        document.documentElement.lang = lang;
-      } catch {}
+    // useEffect i tak nie działa na serwerze – nie trzeba warunkować wywołania hooka
+    localStorage?.setItem?.("cs_lang", lang);
+    try {
+      document.documentElement.lang = lang;
+    } catch {
+      // ignore
     }
   }, [lang]);
 
@@ -433,103 +433,99 @@ export default function LuxuryLanding({
   return (
     <div className="min-h-screen bg-[#f5f5ef] text-neutral-900 selection:bg-neutral-900 selection:text-white">
       {/* NAVBAR */}
-     {/* NAVBAR */}
-<header className="fixed top-0 inset-x-0 z-50 bg-[#f5f5ef] backdrop-blur supports-[backdrop-filter]:bg-[#f5f5ef]">
-  <div className="relative mx-auto max-w-6xl h-16 md:h-20 px-4">
-    {/* 3 kolumny: lewa pusta | środkowa z grupą [Skóra | LOGO | Drewno] | prawa z językami */}
-    <div className="grid grid-cols-[1fr_auto_1fr] items-center h-full">
-      <div /> {/* pusty wyrównywacz */}
+      <header className="fixed top-0 inset-x-0 z-50 bg-[#f5f5ef] backdrop-blur supports-[backdrop-filter]:bg-[#f5f5ef]">
+        <div className="relative mx-auto max-w-6xl h-16 md:h-20 px-4">
+          {/* 3 kolumny: lewa pusta | środkowa z grupą [Skóra | LOGO | Drewno] | prawa z językami */}
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center h-full">
+            <div /> {/* pusty wyrównywacz */}
 
-      {/* ŚRODEK: Skóra | LOGO | Drewno — całość wycentrowana */}
-      <div className="justify-self-center">
-        <div className="flex items-center gap-6 md:gap-8">
-          <Link
-            href="/"
-            className="relative text-[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
+            {/* ŚRODEK: Skóra | LOGO | Drewno — całość wycentrowana */}
+            <div className="justify-self-center">
+              <div className="flex items-center gap-6 md:gap-8">
+                <Link
+                  href="/"
+                  className="relative text-[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
                        hover:text-neutral-950 transition
                        after:absolute after:left-0 after:-bottom-1 after:h-[1px] after:w-0
                        after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full
                        focus:outline-none focus-visible:after:w-full"
-          >
-            {t.navLeather}
-          </Link>
+                >
+                  {t.navLeather}
+                </Link>
 
-          <div className="relative h-14 w-14 md:h-20 md:w-20 shrink-0">
-            <Image
-              src={logo}
-              alt="Craft Symphony"
-              fill
-              sizes="80px"
-              className="object-contain"
-              priority={false}
-            />
-          </div>
+                <div className="relative h-14 w-14 md:h-20 md:w-20 shrink-0">
+                  <Image
+                    src={logo}
+                    alt="Craft Symphony"
+                    fill
+                    sizes="80px"
+                    className="object-contain"
+                    priority={false}
+                  />
+                </div>
 
-          <Link
-            href="/"
-            className="relative text-[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
+                <Link
+                  href="/"
+                  className="relative text-[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
                        hover:text-neutral-950 transition
                        after:absolute after:right-0 after:-bottom-1 after:h-[1px] after:w-0
                        after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full
                        focus:outline-none focus-visible:after:w-full"
-          >
-            {t.navWood}
-          </Link>
-        </div>
-      </div>
+                >
+                  {t.navWood}
+                </Link>
+              </div>
+            </div>
 
-      {/* PRAWO: przełącznik języka — w prawej kolumnie, nie rusza wycentrowania */}
-      <div className="justify-self-end">
-        <div className="flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/80 backdrop-blur px-1.5 py-1 shadow-sm">
-          {/* PL */}
-          <button
-            onClick={() => setLang("pl")}
-            aria-pressed={lang === "pl"}
-            aria-label="Polski"
-            title="Polski"
-            className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors
+            {/* PRAWO: przełącznik języka — w prawej kolumnie, nie rusza wycentrowania */}
+            <div className="justify-self-end">
+              <div className="flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/80 backdrop-blur px-1.5 py-1 shadow-sm">
+                {/* PL */}
+                <button
+                  onClick={() => setLang("pl")}
+                  aria-pressed={lang === "pl"}
+                  aria-label="Polski"
+                  title="Polski"
+                  className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors
               focus:outline-none focus:ring-2 focus:ring-[#f5f5ef]
               ${lang === "pl" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
-          >
-            <Image
-              src="/images/poland.png"
-              alt=""
-              width={20}
-              height={14}
-              className="rounded-[2px] shadow-sm"
-              priority={false}
-            />
-            <span className="sr-only">PL</span>
-          </button>
+                >
+                  <Image
+                    src="/images/poland.png"
+                    alt=""
+                    width={20}
+                    height={14}
+                    className="rounded-[2px] shadow-sm"
+                    priority={false}
+                  />
+                  <span className="sr-only">PL</span>
+                </button>
 
-          {/* EN */}
-          <button
-            onClick={() => setLang("en")}
-            aria-pressed={lang === "en"}
-            aria-label="English"
-            title="English"
-            className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors
+                {/* EN */}
+                <button
+                  onClick={() => setLang("en")}
+                  aria-pressed={lang === "en"}
+                  aria-label="English"
+                  title="English"
+                  className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors
               focus:outline-none focus:ring-2 focus:ring-[#f5f5ef]
               ${lang === "en" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
-          >
-            <Image
-              src="/images/england.png"
-              alt=""
-              width={20}
-              height={14}
-              className="rounded-[2px] shadow-sm"
-              priority={false}
-            />
-            <span className="sr-only">EN</span>
-          </button>
+                >
+                  <Image
+                    src="/images/england.png"
+                    alt=""
+                    width={20}
+                    height={14}
+                    className="rounded-[2px] shadow-sm"
+                    priority={false}
+                  />
+                  <span className="sr-only">EN</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
-</header>
-
-
-
+      </header>
 
       {/* MAIN */}
       <main className="pt-20 md:pt-24 pb-24">
@@ -546,13 +542,13 @@ export default function LuxuryLanding({
               .filter((c) => (c.images?.length || 0) > 0 && (c.items?.length || 0) > 0)
               .map((cat) => (
                 <div key={cat.slug}>
-<CategorySection
-  title={cat.title}
-  images={cat.images}
-  items={cat.items}
-  labels={t}
-  lang={lang}
-/>
+                  <CategorySection
+                    title={cat.title}
+                    images={cat.images}
+                    items={cat.items}
+                    labels={t}
+                    lang={lang}
+                  />
                   <div className="mx-auto w-[100%] h-px bg-neutral-300" />
                 </div>
               ))}
@@ -562,14 +558,12 @@ export default function LuxuryLanding({
             (data?.filter(
               (c) => (c.images?.length || 0) > 0 && (c.items?.length || 0) > 0
             ).length ?? 0) === 0 && (
-              <div className="text-center text-sm text-neutral-600">
-                {t.empty}
-              </div>
+              <div className="text-center text-sm text-neutral-600">{t.empty}</div>
             )}
 
           {/* O rzemiośle */}
           <div className="mt-4 md:mt-6 text-center">
-<p className="mt-4 md:mt-6 max-w-3xl mx-auto text-sm leading-relaxed text-neutral-700 px-2 italic">
+            <p className="mt-4 md:mt-6 max-w-3xl mx-auto text-sm leading-relaxed text-neutral-700 px-2 italic">
               {t.about}
             </p>
             <div className="relative mx-auto h-64 md:h-[31rem] w-full max-w-3xl">
@@ -589,9 +583,7 @@ export default function LuxuryLanding({
             <h3 className="font-serif text-lg md:text-xl tracking-wide">
               {t.interestedHeading}
             </h3>
-            <p className="mt-2 text-sm text-neutral-600 px-2">
-              {t.interestedText}
-            </p>
+            <p className="mt-2 text-sm text-neutral-600 px-2">{t.interestedText}</p>
 
             <form
               onSubmit={(e) => e.preventDefault()}
@@ -645,9 +637,7 @@ export default function LuxuryLanding({
               </div>
             </div>
 
-            <div className="text-center text-xs text-neutral-500">
-              © 2025 Craft Symphony
-            </div>
+            <div className="text-center text-xs text-neutral-500">© 2025 Craft Symphony</div>
           </div>
         </section>
       </main>

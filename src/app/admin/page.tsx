@@ -8,7 +8,11 @@ import { ChevronUp, ChevronDown, Pencil, Save, X, Trash2 } from "lucide-react";
 const API_HEADERS = (pwd: string) => ({ "x-admin-password": pwd });
 function errToString(e: unknown): string {
   if (e instanceof Error) return e.message;
-  try { return JSON.stringify(e); } catch { return String(e); }
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
 }
 
 /* ========= types ========= */
@@ -86,9 +90,7 @@ function formatPriceForLang(price: string | number | undefined, lang: Lang) {
 
   if (lang === "pl") return price;
 
-  const numericPLN = Number(
-    String(price).replace(/[^\d.,]/g, "").replace(/\s/g, "").replace(",", ".")
-  );
+  const numericPLN = Number(String(price).replace(/[^\d.,]/g, "").replace(/\s/g, "").replace(",", "."));
   if (!isFinite(numericPLN)) return price;
 
   const usd = numericPLN / 4;
@@ -150,6 +152,8 @@ function CategoryPreview({
   };
 
   if (count === 0) return null;
+
+  const maxScrollIndex = Math.max(0, displayImages.length - VISIBLE);
 
   return (
     <div>
@@ -213,7 +217,7 @@ function CategoryPreview({
               </div>
 
               <button
-                onClick={() => setScrollIndex((s) => Math.min(displayImages.length - VISIBLE, s + 1))}
+                onClick={() => setScrollIndex((s) => Math.min(maxScrollIndex, s + 1))}
                 className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 hover:bg-black/40 text-white shadow-sm"
                 aria-label={t.scrollDown}
               >
@@ -227,13 +231,13 @@ function CategoryPreview({
       <div className="mt-6 md:mt-8 text-center">
         <div className="text-center mb-3">
           <h3 className="font-serif text-base sm:text-lg tracking-wide">
-            {t.numberLabel}&nbsp;{active + 1}&nbsp;{belt?.name ?? "—"}
+            {t.numberLabel}\u00a0{active + 1}\u00a0{belt?.name ?? "—"}
           </h3>
           <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">{belt?.description ?? "—"}</p>
         </div>
 
         <div className="max-w-4xl mx-auto">
-          <div className="text-center text-sm text-neutral-600 mb-[-48] ">{belt?.upperSize ?? "—"}</div>
+          <div className="text-center text-sm text-neutral-600 mb-[-48px]">{belt?.upperSize ?? "—"}</div>
 
           <div className="rounded-2xl overflow-hidden">
             <div className="relative mx-auto w-2/3 md:w-1/3 aspect-[3/2]">
@@ -241,14 +245,12 @@ function CategoryPreview({
             </div>
           </div>
 
-          <div className="text-center text-sm text-neutral-600 mt-[-48]">{belt?.lowerSize ?? "—"}</div>
+          <div className="text-center text-sm text-neutral-600 mt-[-48px]">{belt?.lowerSize ?? "—"}</div>
         </div>
 
         <p className="mt-8 text-center text-[13px] text-neutral-600 mb-16 italic">
           {t.price}{" "}
-          <span className="font-medium tracking-wide">
-            {formatPriceForLang(belt?.price, lang)}
-          </span>
+          <span className="font-medium tracking-wide">{formatPriceForLang(belt?.price, lang)}</span>
         </p>
       </div>
     </div>
@@ -286,16 +288,21 @@ export default function AdminPage() {
   });
 
   // edycja itemu
-  const [editItem, setEditItem] = useState<Record<string, {
-    categoryId: string;
-    title: string;
-    description: string;
-    rozmiarMin: string;
-    rozmiarMax: string;
-    cenaPLN: string;
-    numerPaska: string;
-    file: File | null;
-  }>>({});
+  const [editItem, setEditItem] = useState<
+    Record<
+      string,
+      {
+        categoryId: string;
+        title: string;
+        description: string;
+        rozmiarMin: string;
+        rozmiarMax: string;
+        cenaPLN: string;
+        numerPaska: string;
+        file: File | null;
+      }
+    >
+  >({});
 
   // język w podglądzie
   const [previewLang, setPreviewLang] = useState<Lang>("pl");
@@ -344,7 +351,8 @@ export default function AdminPage() {
   /* ===== kategorie: create / edit / delete / reorder ===== */
   const submitCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true); setMsg(null);
+    setLoading(true);
+    setMsg(null);
     try {
       const r = await authedFetch("/api/admin/categories", {
         method: "POST",
@@ -352,22 +360,30 @@ export default function AdminPage() {
         body: JSON.stringify({ name: newCatName, slug: newCatSlug || undefined }),
       });
       if (!r.ok) throw new Error((await r.json()).error || "Błąd");
-      setNewCatName(""); setNewCatSlug("");
+      setNewCatName("");
+      setNewCatSlug("");
       await refreshCats();
       setMsg("Dodano kategorię");
-    } catch (e) { setMsg(errToString(e)); }
-    finally { setLoading(false); }
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const startEditCat = (c: Category) =>
-    setEditCat((s) => ({ ...s, [c._id]: { name: c.name, slug: c.slug } }));
+  const startEditCat = (c: Category) => setEditCat((s) => ({ ...s, [c._id]: { name: c.name, slug: c.slug } }));
 
-  const cancelEditCat = (id: string) =>
-    setEditCat((s) => { const n = { ...s }; delete n[id]; return n; });
+  const cancelEditCat = (id: string) => setEditCat((s) => {
+    const n = { ...s };
+    delete n[id];
+    return n;
+  });
 
   const saveCat = async (id: string) => {
-    const data = editCat[id]; if (!data) return;
-    setLoading(true); setMsg(null);
+    const data = editCat[id];
+    if (!data) return;
+    setLoading(true);
+    setMsg(null);
     try {
       const r = await authedFetch(`/api/admin/categories/${id}`, {
         method: "PATCH",
@@ -378,20 +394,27 @@ export default function AdminPage() {
       cancelEditCat(id);
       await refreshCats();
       setMsg("Zapisano kategorię");
-    } catch (e) { setMsg(errToString(e)); }
-    finally { setLoading(false); }
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const deleteCat = async (id: string) => {
     if (!confirm("Usunąć kategorię i wszystkie jej przedmioty?")) return;
-    setLoading(true); setMsg(null);
+    setLoading(true);
+    setMsg(null);
     try {
       const r = await authedFetch(`/api/admin/categories/${id}`, { method: "DELETE" });
       if (!r.ok) throw new Error((await r.json()).error || "Błąd");
       await Promise.all([refreshCats(), refreshItems()]);
       setMsg("Usunięto kategorię");
-    } catch (e) { setMsg(errToString(e)); }
-    finally { setLoading(false); }
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   // zamiana order z sąsiadem
@@ -401,34 +424,41 @@ export default function AdminPage() {
     const swapIdx = idx + dir;
     if (idx < 0 || swapIdx < 0 || swapIdx >= sorted.length) return;
 
-    const a = sorted[idx]; const b = sorted[swapIdx];
-    const aOrder = a.order ?? idx; const bOrder = b.order ?? swapIdx;
+    const a = sorted[idx];
+    const b = sorted[swapIdx];
+    const aOrder = a.order ?? idx;
+    const bOrder = b.order ?? swapIdx;
 
-    setLoading(true); setMsg(null);
+    setLoading(true);
+    setMsg(null);
     try {
       const r1 = await authedFetch(`/api/admin/categories/${a._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
-        body: JSON.stringify({ order: bOrder })
+        body: JSON.stringify({ order: bOrder }),
       });
       if (!r1.ok) throw new Error((await r1.json()).error || "Błąd");
 
       const r2 = await authedFetch(`/api/admin/categories/${b._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
-        body: JSON.stringify({ order: aOrder })
+        body: JSON.stringify({ order: aOrder }),
       });
       if (!r2.ok) throw new Error((await r2.json()).error || "Błąd");
 
       await refreshCats();
-    } catch (e) { setMsg(errToString(e)); }
-    finally { setLoading(false); }
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   /* ===== items: create / edit / delete ===== */
   const submitItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true); setMsg(null);
+    setLoading(true);
+    setMsg(null);
     try {
       if (!form.file) throw new Error("Dodaj zdjęcie");
 
@@ -457,8 +487,11 @@ export default function AdminPage() {
       setForm({ categoryId: "", title: "", description: "", rozmiarMin: "", rozmiarMax: "", cenaPLN: "", numerPaska: "", file: null });
       await refreshItems();
       setMsg("Dodano przedmiot");
-    } catch (e) { setMsg(errToString(e)); }
-    finally { setLoading(false); }
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const startEditItem = (it: Item) => {
@@ -473,16 +506,21 @@ export default function AdminPage() {
         cenaPLN: String(it.cenaPLN ?? ""),
         numerPaska: String(it.numerPaska ?? ""),
         file: null,
-      }
+      },
     }));
   };
 
-  const cancelEditItem = (id: string) =>
-    setEditItem((s) => { const n = { ...s }; delete n[id]; return n; });
+  const cancelEditItem = (id: string) => setEditItem((s) => {
+    const n = { ...s };
+    delete n[id];
+    return n;
+  });
 
   const saveItem = async (id: string) => {
-    const data = editItem[id]; if (!data) return;
-    setLoading(true); setMsg(null);
+    const data = editItem[id];
+    if (!data) return;
+    setLoading(true);
+    setMsg(null);
     try {
       let imagePath: string | undefined;
 
@@ -514,20 +552,27 @@ export default function AdminPage() {
       cancelEditItem(id);
       await refreshItems();
       setMsg("Zapisano przedmiot");
-    } catch (e) { setMsg(errToString(e)); }
-    finally { setLoading(false); }
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const deleteItem = async (id: string) => {
     if (!confirm("Usunąć przedmiot?")) return;
-    setLoading(true); setMsg(null);
+    setLoading(true);
+    setMsg(null);
     try {
       const r = await authedFetch(`/api/admin/items/${id}`, { method: "DELETE" });
       if (!r.ok) throw new Error((await r.json()).error || "Błąd");
       await refreshItems();
       setMsg("Usunięto przedmiot");
-    } catch (e) { setMsg(errToString(e)); }
-    finally { setLoading(false); }
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   /* ===== dane do podglądu ===== */
@@ -564,7 +609,9 @@ export default function AdminPage() {
             placeholder="hasło"
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 mb-3 outline-none focus:ring-2 focus:ring-neutral-900/10"
           />
-          <button onClick={tryAuth} className="w-full px-4 py-2 rounded-lg bg-neutral-900 text-white">Zaloguj</button>
+          <button onClick={tryAuth} className="w-full px-4 py-2 rounded-lg bg-neutral-900 text-white">
+            Zaloguj
+          </button>
           {msg && <p className="mt-3 text-sm text-red-600">{msg}</p>}
         </div>
       </main>
@@ -572,6 +619,8 @@ export default function AdminPage() {
   }
 
   /* ===== main admin UI ===== */
+  const sortedCats = [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
   return (
     <main className="min-h-screen bg-[#f5f5ef] text-neutral-900 p-4 md:p-8">
       <div className="mx-auto max-w-6xl space-y-10">
@@ -592,16 +641,44 @@ export default function AdminPage() {
               className="rounded-lg border border-neutral-300 px-3 py-2"
               required
             />
+            {/* opcjonalny slug (jeśli backend nie generuje automatycznie) */}
+            <input
+              value={newCatSlug}
+              onChange={(e) => setNewCatSlug(e.target.value)}
+              placeholder="Slug (opcjonalnie)"
+              className="rounded-lg border border-neutral-300 px-3 py-2"
+            />
             <button disabled={loading} className="rounded-lg bg-neutral-900 text-white px-4 py-2">
               {loading ? "Zapisywanie…" : "Dodaj kategorię"}
             </button>
           </form>
 
           <ul className="text-sm text-neutral-700 divide-y divide-neutral-200">
-            {[...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c, i, arr) => {
+            {sortedCats.map((c, i) => {
               const isEditing = !!editCat[c._id];
+              const canUp = i > 0;
+              const canDown = i < sortedCats.length - 1;
               return (
                 <li key={c._id} className="py-3 flex items-center gap-3">
+                  {/* reorder */}
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onClick={() => moveCat(c._id, -1)}
+                      disabled={!canUp || loading}
+                      title="Przenieś wyżej"
+                      className={`p-1.5 rounded border ${canUp ? "hover:bg-neutral-50" : "opacity-40 cursor-not-allowed"}`}
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => moveCat(c._id, 1)}
+                      disabled={!canDown || loading}
+                      title="Przenieś niżej"
+                      className={`p-1.5 rounded border ${canDown ? "hover:bg-neutral-50" : "opacity-40 cursor-not-allowed"}`}
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </button>
+                  </div>
 
                   {/* content */}
                   {!isEditing ? (
@@ -665,8 +742,10 @@ export default function AdminPage() {
               required
             >
               <option value="">Wybierz kategorię…</option>
-              {[...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c) => (
-                <option key={c._id} value={c._id}>{c.name}</option>
+              {sortedCats.map((c) => (
+                <option key={c._id} value={c._id}>
+                  {c.name}
+                </option>
               ))}
             </select>
             <input
@@ -738,7 +817,7 @@ export default function AdminPage() {
             {items.map((it) => {
               const editing = editItem[it._id];
               return (
-                <div key={it._id} className=" rounded-xl p-3 flex gap-3 bg-white">
+                <div key={it._id} className="rounded-xl p-3 flex gap-3 bg-white">
                   <div className="relative w-24 h-24">
                     <Image src={it.imagePath} alt={it.title} fill sizes="96px" className="object-cover rounded-lg border" />
                   </div>
@@ -746,8 +825,12 @@ export default function AdminPage() {
                   {!editing ? (
                     <div className="flex-1 text-sm">
                       <div className="font-medium">{it.title}</div>
-                      <div className="text-neutral-600">Kategoria: {typeof it.categoryId === "string" ? it.categoryId : it.categoryId?.name}</div>
-                      <div className="text-neutral-600">Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm</div>
+                      <div className="text-neutral-600">
+                        Kategoria: {typeof it.categoryId === "string" ? it.categoryId : it.categoryId?.name}
+                      </div>
+                      <div className="text-neutral-600">
+                        Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm
+                      </div>
                       <div className="text-neutral-600">Cena: {it.cenaPLN} PLN, Nr: {it.numerPaska}</div>
                       <div className="mt-2 flex gap-2">
                         <button onClick={() => startEditItem(it)} className="px-3 py-1.5 rounded border hover:bg-neutral-50 text-neutral-700 flex items-center gap-1">
@@ -765,8 +848,10 @@ export default function AdminPage() {
                         onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], categoryId: e.target.value } }))}
                         className="rounded border border-neutral-300 px-3 py-1.5"
                       >
-                        {[...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c) => (
-                          <option key={c._id} value={c._id}>{c.name}</option>
+                        {sortedCats.map((c) => (
+                          <option key={c._id} value={c._id}>
+                            {c.name}
+                          </option>
                         ))}
                       </select>
                       <input
