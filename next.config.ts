@@ -1,12 +1,14 @@
-/** @type {import('next').NextConfig} */
+// next.config.ts (lub .js)
 const nextConfig = {
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "blob.vercel-storage.com" },
-      // jeśli użyjesz S3:
-      // { protocol: "https", hostname: "*.amazonaws.com" }
+      {
+        protocol: "https",
+        hostname: "**.vercel-storage.com", // działa dla <bucket>.public.blob.vercel-storage.com
+        pathname: "/**",
+      },
     ],
   },
 };
 
-export default nextConfig;
+export default nextConfig; // (w .js użyj module.exports = nextConfig;
