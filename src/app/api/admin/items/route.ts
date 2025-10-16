@@ -6,19 +6,42 @@ import Category from "@/models/Category";
 import { checkAdminPassword } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
-// export const runtime = "nodejs"; // odkomentuj, jeśli miałbyś kłopot z Mongoose na Edge
+// export const runtime = "nodejs"; // odkomentuj, jeśli Mongoose sypie się na Edge
+
+/** Wejście do POST /api/admin/items */
+interface CreateItemBody {
+  categoryId: string;
+  title?: string;
+  description?: string;
+  rozmiarMin?: number | string;
+  rozmiarMax?: number | string;
+  cenaPLN?: number | string;
+  numerPaska?: number | string;
+  imagePath?: string;
+}
+
+function toNumber(n: unknown, fallback = 0): number {
+  const v = Number(n);
+  return Number.isFinite(v) ? v : fallback;
+}
 
 export async function POST(req: NextRequest) {
   if (!checkAdminPassword(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: any;
+  let bodyUnknown: unknown;
   try {
-    body = await req.json(); // jeśli wysyłasz form-data, użyj req.formData()
+    bodyUnknown = await req.json(); // jeśli wysyłasz form-data, użyj req.formData()
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+
+  // prosta walidacja kształtu
+  if (typeof bodyUnknown !== "object" || bodyUnknown === null) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const body = bodyUnknown as Partial<CreateItemBody>;
 
   const {
     categoryId,
@@ -29,13 +52,13 @@ export async function POST(req: NextRequest) {
     cenaPLN,
     numerPaska,
     imagePath,
-  } = body ?? {};
+  } = body;
 
   await dbConnect();
 
   // Walidacje podstawowe
-  if (!categoryId) {
-    return NextResponse.json({ error: "Brak categoryId" }, { status: 400 });
+  if (!categoryId || typeof categoryId !== "string") {
+    return NextResponse.json({ error: "Brak lub nieprawidłowe categoryId" }, { status: 400 });
   }
   const cat = await Category.findById(categoryId);
   if (!cat) {
@@ -46,19 +69,19 @@ export async function POST(req: NextRequest) {
     categoryId: String(categoryId),
     title: String(title ?? ""),
     description: String(description ?? ""),
-    rozmiarMin: Number(rozmiarMin ?? 0),
-    rozmiarMax: Number(rozmiarMax ?? 0),
-    cenaPLN: Number(cenaPLN ?? 0),
-    numerPaska: Number(numerPaska ?? 0),
+    rozmiarMin: toNumber(rozmiarMin),
+    rozmiarMax: toNumber(rozmiarMax),
+    cenaPLN: toNumber(cenaPLN),
+    numerPaska: toNumber(numerPaska),
     imagePath: imagePath ? String(imagePath) : undefined,
   });
 
-  // ZAWSZE coś zwróć – nawet jeśli to tylko { ok: true }
   return NextResponse.json({ ok: true, item: doc }, { status: 201 });
 }
 
 export async function GET() {
   await dbConnect();
   const items = await Item.find().populate("categoryId", "name slug");
-  return NextResponse.json({ items });
+  // Front oczekuje tablicy Item[]:
+  return NextResponse.json(items);
 }
