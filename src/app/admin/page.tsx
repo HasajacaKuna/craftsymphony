@@ -1,251 +1,883 @@
 "use client";
-
-import React, { useEffect, useState } from "react";
-import { Upload, Trash2, GripVertical, LogOut } from "lucide-react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { AnimatePresence, motion, useSpring } from "framer-motion";
+import { ChevronUp, ChevronDown, Pencil, Save, X, Trash2 } from "lucide-react";
 
-const GALLERY_KEY = "GALLERY_IMAGES";        // shared with public page
-const ADMIN_AUTH_KEY = "ADMIN_AUTH_OK";      // remembers that user passed the password
+/* ========= helpers ========= */
+const API_HEADERS = (pwd: string) => ({ "x-admin-password": pwd });
+function errToString(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  try { return JSON.stringify(e); } catch { return String(e); }
+}
 
-type Img = { src: string };
+/* ========= types ========= */
+type Lang = "pl" | "en";
 
-export default function AdminPage() {
-  // ---- auth (HOOKS ALWAYS FIRST) ----
-  const [authorized, setAuthorized] = useState(false);
-  const [inputPass, setInputPass] = useState("");
-  // hasło trzymamy w publicznym ENV (świadomie – to prosty gate po stronie klienta)
-  const expected = process.env.NEXT_PUBLIC_ADMIN_PASS ?? "haslo123";
+type Category = { _id: string; name: string; slug: string; order?: number };
+type Item = {
+  _id: string;
+  categoryId: { _id: string; name: string; slug: string } | string;
+  title: string;
+  description: string;
+  rozmiarMin: number;
+  rozmiarMax: number;
+  cenaPLN: number;
+  numerPaska: number;
+  imagePath: string;
+};
+
+type BeltItem = {
+  name: string;
+  description: string;
+  price: string | number;
+  upperSize: string;
+  lowerSize: string;
+};
+
+const UI_STRINGS: Record<
+  Lang,
+  {
+    preview: string;
+    numberLabel: string;
+    selectBelt: string;
+    scrollUp: string;
+    scrollDown: string;
+    heroAltPrefix: string;
+    schemaAlt: string;
+    price: string;
+  }
+> = {
+  pl: {
+    preview: "Podgląd (jak na stronie głównej)",
+    numberLabel: "Nr.",
+    selectBelt: "Wybierz pasek nr",
+    scrollUp: "Przewiń w górę",
+    scrollDown: "Przewiń w dół",
+    heroAltPrefix: "Pasek",
+    schemaAlt: "Schemat paska – rozmiar",
+    price: "Cena:",
+  },
+  en: {
+    preview: "Preview (like the homepage)",
+    numberLabel: "No.",
+    selectBelt: "Select belt no.",
+    scrollUp: "Scroll up",
+    scrollDown: "Scroll down",
+    heroAltPrefix: "Belt",
+    schemaAlt: "Belt diagram — size",
+    price: "Price:",
+  },
+};
+
+/* ========= price formatting (PL → PLN / EN → USD=PLN/4) ========= */
+function formatPriceForLang(price: string | number | undefined, lang: Lang) {
+  if (price == null) return "—";
+
+  if (typeof price === "number") {
+    if (lang === "pl") return `${price.toLocaleString("pl-PL")} PLN`;
+    const usd = price / 4;
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 2,
+    }).format(usd);
+  }
+
+  if (lang === "pl") return price;
+
+  const numericPLN = Number(
+    String(price).replace(/[^\d.,]/g, "").replace(/\s/g, "").replace(",", ".")
+  );
+  if (!isFinite(numericPLN)) return price;
+
+  const usd = numericPLN / 4;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(usd);
+}
+
+/* ========= mini komponent podglądu kategorii (jak na froncie) ========= */
+function CategoryPreview({
+  title,
+  images,
+  items,
+  lang,
+}: {
+  title: string;
+  images: string[];
+  items: BeltItem[];
+  lang: Lang;
+}) {
+  // Hooki zawsze na górze (bez warunków)
+  const [active, setActive] = useState(0);
+  const [scrollIndex, setScrollIndex] = useState(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+
+  const VISIBLE = 4;
+  const THUMB_H = 96;
+  const GAP = 12;
+  const ySpring = useSpring(0, { stiffness: 120, damping: 20 });
+
+  const t = UI_STRINGS[lang];
+
+  // Dane do renderu (dopiero po hookach)
+  const count = Math.min(images.length, items.length);
+  const displayImages = images.slice(0, count);
+  const displayItems = items.slice(0, count);
+  const belt = displayItems[active];
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const ok = window.localStorage.getItem(ADMIN_AUTH_KEY) === "1";
-      if (ok) setAuthorized(true);
-    } catch {}
-  }, []);
+    ySpring.set(-(scrollIndex * (THUMB_H + GAP)));
+  }, [scrollIndex, ySpring]);
 
-  // ---- gallery state ----
-  const [items, setItems] = useState<Img[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-
-  // ---- load gallery from localStorage (supports old string[] format) ----
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(GALLERY_KEY);
-      if (!raw) return setItems([]);
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.every((x) => typeof x === "object" && x?.src)) {
-        setItems(parsed as Img[]);
-      } else if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
-        // migrate: string[] -> Img[]
-        const migrated: Img[] = (parsed as string[]).map((src) => ({ src }));
-        setItems(migrated);
-        window.localStorage.setItem(GALLERY_KEY, JSON.stringify(migrated));
-      }
-    } catch {
-      // ignore
+    if (active < scrollIndex) setScrollIndex(active);
+    if (active > scrollIndex + VISIBLE - 1) setScrollIndex(active - (VISIBLE - 1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
+  const onTouchStart = (e: React.TouchEvent) => setTouchStartX(e.touches[0].clientX);
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) > 40) {
+      setActive((p) => Math.max(0, Math.min(displayImages.length - 1, p + (dx < 0 ? 1 : -1))));
     }
-  }, []);
+    setTouchStartX(null);
+  };
 
-  // ---- helpers ----
-  function save(next: Img[]) {
-    setItems(next);
-    try {
-      window.localStorage.setItem(GALLERY_KEY, JSON.stringify(next));
-    } catch {}
-  }
+  if (count === 0) return null;
 
-  function readAsDataURL(file: File): Promise<string> {
-    return new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(String(r.result));
-      r.onerror = rej;
-      r.readAsDataURL(file);
-    });
-  }
+  return (
+    <div>
+      <div className="mb-6 text-center">
+        <h1 className="font-serif text-2xl md:text-3xl tracking-wide">Craft Symphony - {title}</h1>
+      </div>
 
-  async function onFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
-    if (!files.length) return;
-    setIsUploading(true);
-    try {
-      const dataUrls = await Promise.all(files.map(readAsDataURL));
-      save([...items, ...dataUrls.map((src) => ({ src }))]);
-    } finally {
-      setIsUploading(false);
-      e.currentTarget.value = "";
-    }
-  }
-
-  // ---- reordering ----
-  function move(idx: number, delta: -1 | 1) {
-    const j = idx + delta;
-    if (j < 0 || j >= items.length) return;
-    const next = items.slice();
-    const [moved] = next.splice(idx, 1);
-    next.splice(j, 0, moved);
-    save(next);
-  }
-
-  function onDragStart(idx: number) { setDragIndex(idx); }
-  function onDragEnter(idx: number) { setDragOverIndex(idx); }
-  function onDragOver(e: React.DragEvent) { e.preventDefault(); } // allow drop
-  function onDrop(targetIdx: number) {
-    if (dragIndex === null) return;
-    const from = dragIndex, to = targetIdx;
-    setDragIndex(null); setDragOverIndex(null);
-    if (from === to) return;
-    const next = items.slice();
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    save(next);
-  }
-  function onDragEnd() { setDragIndex(null); setDragOverIndex(null); }
-
-  // ---- password screen (client-only) ----
-  if (!authorized) {
-    return (
-      <main className="min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-zinc-100">
-        <div className="mx-auto flex min-h-screen max-w-md items-center justify-center px-4">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (inputPass === expected) {
-                try { window.localStorage.setItem(ADMIN_AUTH_KEY, "1"); } catch {}
-                setAuthorized(true);
-              }
-            }}
-            className="w-full rounded-2xl border border-black/10 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5"
-          >
-            <h1 className="text-center text-xl font-semibold">Admin access</h1>
-            <p className="mt-1 text-center text-sm text-neutral-600 dark:text-zinc-400">
-              Enter the password to continue
-            </p>
-            <div className="mt-5 space-y-3">
-              <input
-                className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none ring-amber-300/30 focus:ring dark:border-white/10 dark:bg-white/10"
-                placeholder="Password"
-                type="password"
-                value={inputPass}
-                onChange={(e) => setInputPass(e.target.value)}
-                autoFocus
+      <div className="relative">
+        <div className="relative aspect-[4/3] md:aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`hero-${title}-${active}`}
+              initial={{ opacity: 0, scale: 1.02 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+              className="relative h-full w-full"
+              onTouchStart={onTouchStart}
+              onTouchEnd={onTouchEnd}
+            >
+              <Image
+                src={displayImages[active]}
+                alt={`${t.heroAltPrefix} ${belt?.name ?? `${active + 1}`}`}
+                fill
+                sizes="100vw"
+                className="object-cover"
               />
+            </motion.div>
+          </AnimatePresence>
+
+          {displayImages.length > 1 && (
+            <div className="hidden md:flex absolute inset-y-0 right-4 my-4 flex-col items-center justify-center gap-3 select-none">
+              <div className="absolute inset-y-0 -inset-x-2 rounded-2xl bg-black/35 backdrop-blur-sm border border-white/20" />
               <button
-                className="w-full rounded-lg bg-black px-3 py-2 text-sm font-medium text-white transition hover:opacity-90 dark:bg-white dark:text-black"
-                type="submit"
+                onClick={() => setScrollIndex((s) => Math.max(0, s - 1))}
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 hover:bg-black/40 text-white shadow-sm"
+                aria-label={t.scrollUp}
               >
-                Enter
+                <ChevronUp className="h-5 w-5" />
+              </button>
+
+              <div className="relative h-[calc(4*96px+3*12px)] w-28 overflow-hidden rounded-xl border border-white/20 bg-transparent">
+                <motion.div style={{ y: ySpring }} className="absolute top-0 left-0 w-full">
+                  <div className="flex flex-col gap-3 p-0">
+                    {displayImages.map((src, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setActive(i)}
+                        className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${
+                          i === active ? "border-neutral-900 shadow" : "border-neutral-300 hover:border-neutral-500"
+                        }`}
+                        aria-label={`${t.selectBelt} ${i + 1}`}
+                      >
+                        <div className="relative h-24 w-full">
+                          <Image src={src} alt={`thumb-${i + 1}`} fill sizes="112px" className="object-cover rounded-lg" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              </div>
+
+              <button
+                onClick={() => setScrollIndex((s) => Math.min(displayImages.length - VISIBLE, s + 1))}
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 hover:bg-black/40 text-white shadow-sm"
+                aria-label={t.scrollDown}
+              >
+                <ChevronDown className="h-5 w-5" />
               </button>
             </div>
-          </form>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-6 md:mt-8 text-center">
+        <div className="text-center mb-3">
+          <h3 className="font-serif text-base sm:text-lg tracking-wide">
+            {t.numberLabel}&nbsp;{active + 1}&nbsp;{belt?.name ?? "—"}
+          </h3>
+          <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">{belt?.description ?? "—"}</p>
+        </div>
+
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center text-sm text-neutral-600 mb-[-48] ">{belt?.upperSize ?? "—"}</div>
+
+          <div className="rounded-2xl overflow-hidden">
+            <div className="relative mx-auto w-2/3 md:w-1/3 aspect-[3/2]">
+              <Image src="/images/belt2.png" alt={t.schemaAlt} fill sizes="(max-width:768px) 66vw, 33vw" className="object-contain" />
+            </div>
+          </div>
+
+          <div className="text-center text-sm text-neutral-600 mt-[-48]">{belt?.lowerSize ?? "—"}</div>
+        </div>
+
+        <p className="mt-8 text-center text-[13px] text-neutral-600 mb-16 italic">
+          {t.price}{" "}
+          <span className="font-medium tracking-wide">
+            {formatPriceForLang(belt?.price, lang)}
+          </span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ========= główna strona panelu ========= */
+export default function AdminPage() {
+  const [password, setPassword] = useState("");
+  const [ok, setOk] = useState(false);
+
+  // dane
+  const [cats, setCats] = useState<Category[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  // dodawanie kategorii
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatSlug, setNewCatSlug] = useState("");
+
+  // edycja kategorii
+  const [editCat, setEditCat] = useState<Record<string, { name: string; slug: string }>>({});
+
+  // dodawanie itemu
+  const [form, setForm] = useState({
+    categoryId: "",
+    title: "",
+    description: "",
+    rozmiarMin: "",
+    rozmiarMax: "",
+    cenaPLN: "",
+    numerPaska: "",
+    file: null as File | null,
+  });
+
+  // edycja itemu
+  const [editItem, setEditItem] = useState<Record<string, {
+    categoryId: string;
+    title: string;
+    description: string;
+    rozmiarMin: string;
+    rozmiarMax: string;
+    cenaPLN: string;
+    numerPaska: string;
+    file: File | null;
+  }>>({});
+
+  // język w podglądzie
+  const [previewLang, setPreviewLang] = useState<Lang>("pl");
+
+  /* ===== auth persistence ===== */
+  useEffect(() => {
+    const saved = localStorage.getItem("admin_pwd");
+    if (saved) setPassword(saved);
+  }, []);
+
+  /* ===== fetch helper ===== */
+  const authedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const res = await fetch(input, {
+      ...init,
+      headers: { ...(init?.headers || {}), ...API_HEADERS(password) },
+      cache: "no-store",
+    });
+    if (res.status === 401) throw new Error("Błędne hasło");
+    return res;
+  };
+
+  const tryAuth = async () => {
+    try {
+      const r = await authedFetch("/api/admin/categories");
+      if (r.ok) {
+        setOk(true);
+        localStorage.setItem("admin_pwd", password);
+        setCats(await r.json());
+        await refreshItems();
+      }
+    } catch (e) {
+      setOk(false);
+      setMsg(errToString(e));
+    }
+  };
+
+  const refreshCats = async () => {
+    const r = await authedFetch("/api/admin/categories");
+    setCats(await r.json());
+  };
+  const refreshItems = async () => {
+    const r = await authedFetch("/api/admin/items");
+    setItems(await r.json());
+  };
+
+  /* ===== kategorie: create / edit / delete / reorder ===== */
+  const submitCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setMsg(null);
+    try {
+      const r = await authedFetch("/api/admin/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        body: JSON.stringify({ name: newCatName, slug: newCatSlug || undefined }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
+      setNewCatName(""); setNewCatSlug("");
+      await refreshCats();
+      setMsg("Dodano kategorię");
+    } catch (e) { setMsg(errToString(e)); }
+    finally { setLoading(false); }
+  };
+
+  const startEditCat = (c: Category) =>
+    setEditCat((s) => ({ ...s, [c._id]: { name: c.name, slug: c.slug } }));
+
+  const cancelEditCat = (id: string) =>
+    setEditCat((s) => { const n = { ...s }; delete n[id]; return n; });
+
+  const saveCat = async (id: string) => {
+    const data = editCat[id]; if (!data) return;
+    setLoading(true); setMsg(null);
+    try {
+      const r = await authedFetch(`/api/admin/categories/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        body: JSON.stringify({ name: data.name, slug: data.slug }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
+      cancelEditCat(id);
+      await refreshCats();
+      setMsg("Zapisano kategorię");
+    } catch (e) { setMsg(errToString(e)); }
+    finally { setLoading(false); }
+  };
+
+  const deleteCat = async (id: string) => {
+    if (!confirm("Usunąć kategorię i wszystkie jej przedmioty?")) return;
+    setLoading(true); setMsg(null);
+    try {
+      const r = await authedFetch(`/api/admin/categories/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
+      await Promise.all([refreshCats(), refreshItems()]);
+      setMsg("Usunięto kategorię");
+    } catch (e) { setMsg(errToString(e)); }
+    finally { setLoading(false); }
+  };
+
+  // zamiana order z sąsiadem
+  const moveCat = async (id: string, dir: -1 | 1) => {
+    const sorted = [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const idx = sorted.findIndex((c) => c._id === id);
+    const swapIdx = idx + dir;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= sorted.length) return;
+
+    const a = sorted[idx]; const b = sorted[swapIdx];
+    const aOrder = a.order ?? idx; const bOrder = b.order ?? swapIdx;
+
+    setLoading(true); setMsg(null);
+    try {
+      const r1 = await authedFetch(`/api/admin/categories/${a._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        body: JSON.stringify({ order: bOrder })
+      });
+      if (!r1.ok) throw new Error((await r1.json()).error || "Błąd");
+
+      const r2 = await authedFetch(`/api/admin/categories/${b._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        body: JSON.stringify({ order: aOrder })
+      });
+      if (!r2.ok) throw new Error((await r2.json()).error || "Błąd");
+
+      await refreshCats();
+    } catch (e) { setMsg(errToString(e)); }
+    finally { setLoading(false); }
+  };
+
+  /* ===== items: create / edit / delete ===== */
+  const submitItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setMsg(null);
+    try {
+      if (!form.file) throw new Error("Dodaj zdjęcie");
+
+      const fd = new FormData();
+      fd.append("file", form.file);
+      const up = await authedFetch("/api/admin/upload", { method: "POST", body: fd });
+      if (!up.ok) throw new Error((await up.json()).error || "Błąd uploadu");
+      const upData = (await up.json()) as { path: string };
+
+      const r = await authedFetch("/api/admin/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        body: JSON.stringify({
+          categoryId: form.categoryId,
+          title: form.title,
+          description: form.description,
+          rozmiarMin: Number(form.rozmiarMin),
+          rozmiarMax: Number(form.rozmiarMax),
+          cenaPLN: Number(form.cenaPLN),
+          numerPaska: Number(form.numerPaska),
+          imagePath: upData.path,
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
+
+      setForm({ categoryId: "", title: "", description: "", rozmiarMin: "", rozmiarMax: "", cenaPLN: "", numerPaska: "", file: null });
+      await refreshItems();
+      setMsg("Dodano przedmiot");
+    } catch (e) { setMsg(errToString(e)); }
+    finally { setLoading(false); }
+  };
+
+  const startEditItem = (it: Item) => {
+    setEditItem((s) => ({
+      ...s,
+      [it._id]: {
+        categoryId: typeof it.categoryId === "string" ? it.categoryId : it.categoryId._id,
+        title: it.title,
+        description: it.description || "",
+        rozmiarMin: String(it.rozmiarMin ?? ""),
+        rozmiarMax: String(it.rozmiarMax ?? ""),
+        cenaPLN: String(it.cenaPLN ?? ""),
+        numerPaska: String(it.numerPaska ?? ""),
+        file: null,
+      }
+    }));
+  };
+
+  const cancelEditItem = (id: string) =>
+    setEditItem((s) => { const n = { ...s }; delete n[id]; return n; });
+
+  const saveItem = async (id: string) => {
+    const data = editItem[id]; if (!data) return;
+    setLoading(true); setMsg(null);
+    try {
+      let imagePath: string | undefined;
+
+      if (data.file) {
+        const fd = new FormData();
+        fd.append("file", data.file);
+        const up = await authedFetch("/api/admin/upload", { method: "POST", body: fd });
+        if (!up.ok) throw new Error((await up.json()).error || "Błąd uploadu");
+        const upData = (await up.json()) as { path: string };
+        imagePath = upData.path;
+      }
+
+      const r = await authedFetch(`/api/admin/items/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        body: JSON.stringify({
+          categoryId: data.categoryId,
+          title: data.title,
+          description: data.description,
+          rozmiarMin: Number(data.rozmiarMin),
+          rozmiarMax: Number(data.rozmiarMax),
+          cenaPLN: Number(data.cenaPLN),
+          numerPaska: Number(data.numerPaska),
+          ...(imagePath ? { imagePath } : {}),
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
+
+      cancelEditItem(id);
+      await refreshItems();
+      setMsg("Zapisano przedmiot");
+    } catch (e) { setMsg(errToString(e)); }
+    finally { setLoading(false); }
+  };
+
+  const deleteItem = async (id: string) => {
+    if (!confirm("Usunąć przedmiot?")) return;
+    setLoading(true); setMsg(null);
+    try {
+      const r = await authedFetch(`/api/admin/items/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
+      await refreshItems();
+      setMsg("Usunięto przedmiot");
+    } catch (e) { setMsg(errToString(e)); }
+    finally { setLoading(false); }
+  };
+
+  /* ===== dane do podglądu ===== */
+  const groupedForPreview = useMemo(() => {
+    const sortedCats = [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return sortedCats.map((c) => {
+      const its = items
+        .filter((i) => (typeof i.categoryId === "string" ? i.categoryId : i.categoryId?._id) === c._id)
+        .sort((a, b) => (a.numerPaska ?? 0) - (b.numerPaska ?? 0));
+
+      const images = its.map((i) => i.imagePath);
+      const belts: BeltItem[] = its.map((i) => ({
+        name: i.title,
+        description: i.description || "",
+        price: i.cenaPLN, // liczbowo – formatujemy w komponencie
+        upperSize: `${Math.max(i.rozmiarMin, i.rozmiarMax)} cm`,
+        lowerSize: `${Math.min(i.rozmiarMin, i.rozmiarMax)} cm`,
+      }));
+      return { title: c.name, images, items: belts };
+    });
+  }, [cats, items]);
+
+  /* ===== login screen ===== */
+  if (!ok) {
+    return (
+      <main className="min-h-screen bg-[#f5f5ef] text-neutral-900 flex items-center justify-center p-6">
+        <div className="w-full max-w-sm rounded-2xl border border-neutral-300 bg-white p-6 shadow-sm">
+          <h1 className="text-lg font-serif mb-2">Panel administracyjny</h1>
+          <p className="text-sm text-neutral-600 mb-4">Podaj hasło, aby przejść dalej.</p>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="hasło"
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 mb-3 outline-none focus:ring-2 focus:ring-neutral-900/10"
+          />
+          <button onClick={tryAuth} className="w-full px-4 py-2 rounded-lg bg-neutral-900 text-white">Zaloguj</button>
+          {msg && <p className="mt-3 text-sm text-red-600">{msg}</p>}
         </div>
       </main>
     );
   }
 
-  // ---- admin panel ----
+  /* ===== main admin UI ===== */
   return (
-    <main className="min-h-screen bg-white text-neutral-900 transition-colors duration-300 dark:bg-neutral-950 dark:text-zinc-100">
-      <header className="sticky top-0 z-40 border-b border-black/5 bg-white/70 backdrop-blur dark:border-white/10 dark:bg-black/40">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" className="text-lg font-semibold">Admin Panel</Link>
-          <button
-            onClick={() => { try { localStorage.removeItem(ADMIN_AUTH_KEY); } catch {} ; setAuthorized(false); }}
-            className="inline-flex items-center gap-2 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/20"
-            title="Log out"
-          >
-            <LogOut className="h-4 w-4" /> Log out
-          </button>
-        </div>
-      </header>
+    <main className="min-h-screen bg-[#f5f5ef] text-neutral-900 p-4 md:p-8">
+      <div className="mx-auto max-w-6xl space-y-10">
+        <header className="flex items-center justify-between">
+          <h1 className="text-xl md:text-2xl font-serif">Panel administracyjny</h1>
+          <div className="text-xs text-neutral-500">Hasło zapisane lokalnie</div>
+        </header>
 
-      <section className="py-10">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          {/* Upload */}
-          <div className="rounded-2xl border border-black/10 p-4 dark:border-white/10">
-            <h2 className="text/base font-medium">Upload images</h2>
-            <div className="mt-3">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-white/90 dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/15">
-                <input type="file" accept="image/*" multiple onChange={onFilesSelected} className="sr-only" />
-                <Upload className="h-4 w-4" />
-                {isUploading ? "Uploading…" : "Choose files"}
-              </label>
+        {/* ========== KATEGORIE ========== */}
+        <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm">
+          <h2 className="font-medium mb-4">Kategorie</h2>
+
+          <form onSubmit={submitCategory} className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            <input
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              placeholder="Nazwa kategorii"
+              className="rounded-lg border border-neutral-300 px-3 py-2"
+              required
+            />
+            <button disabled={loading} className="rounded-lg bg-neutral-900 text-white px-4 py-2">
+              {loading ? "Zapisywanie…" : "Dodaj kategorię"}
+            </button>
+          </form>
+
+          <ul className="text-sm text-neutral-700 divide-y divide-neutral-200">
+            {[...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c, i, arr) => {
+              const isEditing = !!editCat[c._id];
+              return (
+                <li key={c._id} className="py-3 flex items-center gap-3">
+
+                  {/* content */}
+                  {!isEditing ? (
+                    <div className="flex-1">
+                      <div className="font-medium">{c.name}</div>
+                      <div className="text-neutral-500">/{c.slug}</div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <input
+                        value={editCat[c._id].name}
+                        onChange={(e) => setEditCat((s) => ({ ...s, [c._id]: { ...s[c._id], name: e.target.value } }))}
+                        className="rounded border border-neutral-300 px-3 py-1.5"
+                      />
+                      <input
+                        value={editCat[c._id].slug}
+                        onChange={(e) => setEditCat((s) => ({ ...s, [c._id]: { ...s[c._id], slug: e.target.value } }))}
+                        className="rounded border border-neutral-300 px-3 py-1.5"
+                      />
+                    </div>
+                  )}
+
+                  {/* actions */}
+                  <div className="flex items-center gap-2">
+                    {!isEditing ? (
+                      <>
+                        <button onClick={() => startEditCat(c)} className="p-2 rounded hover:bg-neutral-100" title="Edytuj">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => deleteCat(c._id)} className="p-2 rounded hover:bg-red-50 text-red-600" title="Usuń">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => saveCat(c._id)} className="p-2 rounded hover:bg-green-50 text-green-700" title="Zapisz">
+                          <Save className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => cancelEditCat(c._id)} className="p-2 rounded hover:bg-neutral-100" title="Anuluj">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+            {cats.length === 0 && <li className="py-3 text-neutral-500">Brak kategorii</li>}
+          </ul>
+        </section>
+
+        {/* ========== PRZEDMIOTY ========== */}
+        <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm text-gray-800">
+          <h2 className="font-medium mb-4">Dodaj przedmiot</h2>
+
+          <form onSubmit={submitItem} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <select
+              value={form.categoryId}
+              onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+              className="rounded-lg border border-neutral-300 px-3 py-2"
+              required
+            >
+              <option value="">Wybierz kategorię…</option>
+              {[...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c) => (
+                <option key={c._id} value={c._id}>{c.name}</option>
+              ))}
+            </select>
+            <input
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              placeholder="Tytuł"
+              className="rounded-lg border border-neutral-300 px-3 py-2"
+              required
+            />
+            <textarea
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Opis"
+              className="rounded-lg border border-neutral-300 px-3 py-2 md:col-span-2"
+              rows={3}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="number"
+                value={form.rozmiarMin}
+                onChange={(e) => setForm({ ...form, rozmiarMin: e.target.value })}
+                placeholder="Rozmiar min (cm)"
+                className="rounded-lg border border-neutral-300 px-3 py-2"
+                required
+              />
+              <input
+                type="number"
+                value={form.rozmiarMax}
+                onChange={(e) => setForm({ ...form, rozmiarMax: e.target.value })}
+                placeholder="Rozmiar max (cm)"
+                className="rounded-lg border border-neutral-300 px-3 py-2"
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="number"
+                value={form.cenaPLN}
+                onChange={(e) => setForm({ ...form, cenaPLN: e.target.value })}
+                placeholder="Cena (PLN)"
+                className="rounded-lg border border-neutral-300 px-3 py-2"
+                required
+              />
+              <input
+                type="number"
+                value={form.numerPaska}
+                onChange={(e) => setForm({ ...form, numerPaska: e.target.value })}
+                placeholder="Nr paska"
+                className="rounded-lg border border-neutral-300 px-3 py-2"
+                required
+              />
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setForm({ ...form, file: e.target.files?.[0] || null })}
+              className="rounded-lg border border-neutral-300 px-3 py-2 md:col-span-2"
+              required
+            />
+            <button disabled={loading} className="rounded-lg bg-neutral-900 text-white px-4 py-2 md:col-span-2">
+              {loading ? "Zapisywanie…" : "Dodaj przedmiot"}
+            </button>
+          </form>
+
+          {msg && <p className="mt-3 text-sm text-neutral-700">{msg}</p>}
+
+          <h3 className="mt-8 font-medium">Lista przedmiotów</h3>
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {items.map((it) => {
+              const editing = editItem[it._id];
+              return (
+                <div key={it._id} className=" rounded-xl p-3 flex gap-3 bg-white">
+                  <div className="relative w-24 h-24">
+                    <Image src={it.imagePath} alt={it.title} fill sizes="96px" className="object-cover rounded-lg border" />
+                  </div>
+
+                  {!editing ? (
+                    <div className="flex-1 text-sm">
+                      <div className="font-medium">{it.title}</div>
+                      <div className="text-neutral-600">Kategoria: {typeof it.categoryId === "string" ? it.categoryId : it.categoryId?.name}</div>
+                      <div className="text-neutral-600">Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm</div>
+                      <div className="text-neutral-600">Cena: {it.cenaPLN} PLN, Nr: {it.numerPaska}</div>
+                      <div className="mt-2 flex gap-2">
+                        <button onClick={() => startEditItem(it)} className="px-3 py-1.5 rounded border hover:bg-neutral-50 text-neutral-700 flex items-center gap-1">
+                          <Pencil className="h-4 w-4" /> Edytuj
+                        </button>
+                        <button onClick={() => deleteItem(it._id)} className="px-3 py-1.5 rounded border hover:bg-red-50 text-red-600 flex items-center gap-1">
+                          <Trash2 className="h-4 w-4" /> Usuń
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 grid grid-cols-1 gap-2 text-sm">
+                      <select
+                        value={editing.categoryId}
+                        onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], categoryId: e.target.value } }))}
+                        className="rounded border border-neutral-300 px-3 py-1.5"
+                      >
+                        {[...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c) => (
+                          <option key={c._id} value={c._id}>{c.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        value={editing.title}
+                        onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], title: e.target.value } }))}
+                        className="rounded border border-neutral-300 px-3 py-1.5"
+                        placeholder="Tytuł"
+                      />
+                      <textarea
+                        value={editing.description}
+                        onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], description: e.target.value } }))}
+                        className="rounded border border-neutral-300 px-3 py-1.5"
+                        placeholder="Opis"
+                        rows={2}
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="number"
+                          value={editing.rozmiarMin}
+                          onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMin: e.target.value } }))}
+                          className="rounded border border-neutral-300 px-3 py-1.5"
+                          placeholder="Min"
+                        />
+                        <input
+                          type="number"
+                          value={editing.rozmiarMax}
+                          onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMax: e.target.value } }))}
+                          className="rounded border border-neutral-300 px-3 py-1.5"
+                          placeholder="Max"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="number"
+                          value={editing.cenaPLN}
+                          onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], cenaPLN: e.target.value } }))}
+                          className="rounded border border-neutral-300 px-3 py-1.5"
+                          placeholder="Cena"
+                        />
+                        <input
+                          type="number"
+                          value={editing.numerPaska}
+                          onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], numerPaska: e.target.value } }))}
+                          className="rounded border border-neutral-300 px-3 py-1.5"
+                          placeholder="Nr"
+                        />
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], file: e.target.files?.[0] || null } }))}
+                        className="rounded border border-neutral-300 px-3 py-1.5"
+                      />
+                      <div className="mt-1 flex gap-2">
+                        <button onClick={() => saveItem(it._id)} className="px-3 py-1.5 rounded border hover:bg-green-50 text-green-700 flex items-center gap-1">
+                          <Save className="h-4 w-4" /> Zapisz
+                        </button>
+                        <button onClick={() => cancelEditItem(it._id)} className="px-3 py-1.5 rounded border hover:bg-neutral-50 flex items-center gap-1">
+                          <X className="h-4 w-4" /> Anuluj
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {items.length === 0 && <div className="text-sm text-neutral-500">Brak przedmiotów</div>}
+          </div>
+        </section>
+
+        {/* ========== PODGLĄD (jak na stronie głównej) ========== */}
+        <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-medium">{UI_STRINGS[previewLang].preview}</h2>
+            <div className="flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-1.5 py-1">
+              <button
+                onClick={() => setPreviewLang("pl")}
+                aria-pressed={previewLang === "pl"}
+                title="Polski"
+                className={`inline-flex items-center justify-center rounded-md p-1.5 ${previewLang === "pl" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
+              >
+                <Image src="/images/poland.png" alt="" width={20} height={14} className="rounded-[2px]" />
+              </button>
+              <button
+                onClick={() => setPreviewLang("en")}
+                aria-pressed={previewLang === "en"}
+                title="English"
+                className={`inline-flex items-center justify-center rounded-md p-1.5 ${previewLang === "en" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
+              >
+                <Image src="/images/england.png" alt="" width={20} height={14} className="rounded-[2px]" />
+              </button>
             </div>
           </div>
 
-          {/* Grid */}
-          <div className="mt-8">
-            <h2 className="text-base font-medium">Current images ({items.length})</h2>
-
-            {items.length === 0 ? (
-              <p className="mt-4 text-sm text-neutral-600 dark:text-zinc-400">No images yet. Upload to get started.</p>
-            ) : (
-              <div className="mt-4 grid grid-cols-3 gap-6">
-                {items.map((it, idx) => (
-                  <div
-                    key={idx}
-                    className={`group rounded-2xl cursor-pointer ${dragOverIndex === idx ? "ring-2 ring-amber-400" : ""}`}
-                    draggable
-                    onDragStart={() => onDragStart(idx)}
-                    onDragEnter={() => onDragEnter(idx)}
-                    onDragOver={onDragOver}
-                    onDragEnd={onDragEnd}
-                    onDrop={() => onDrop(idx)}
-                  >
-                    <figure className="relative aspect-[3/4] overflow-hidden rounded-2xl border border-black/10 bg-neutral-100 shadow-sm transition-colors dark:border-white/10 dark:bg-white/5">
-                      <div className="relative h-full w-full">
-                        <Image
-                          src={it.src}
-                          alt={`Image ${idx + 1}`}
-                          fill
-                          className="object-cover"
-                          sizes="(max-width: 1024px) 33vw, 33vw"
-                        />
-                      </div>
-                      {/* Drag handle / hint */}
-                      <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 p-2 opacity-0 transition-opacity group-hover:opacity-100">
-                        <span className="rounded-md bg-black/50 px-2 py-0.5 text-[10px] text-white">{idx + 1}</span>
-                        <span className="flex items-center gap-1 rounded-md bg-black/50 px-2 py-0.5 text-[10px] text-white">
-                          <GripVertical className="h-3.5 w-3.5" />
-                          Drag to reorder
-                        </span>
-                      </div>
-                    </figure>
-
-                    <div className="mt-2 flex items-center justify-between gap-2">
-                      <button
-                        onClick={() => move(idx, -1)}
-                        className="w-[33%] rounded-lg border border-black/20 bg-neutral-200 py-2 text-sm font-medium text-black hover:bg-neutral-300 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
-                      >
-                        ↑ Up
-                      </button>
-                      <button
-                        onClick={() => move(idx, 1)}
-                        className="w-[33%] rounded-lg border border-black/20 bg-neutral-200 py-2 text-sm font-medium text-black hover:bg-neutral-300 dark:border-white/20 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
-                      >
-                        ↓ Down
-                      </button>
-                      <button
-                        onClick={() => {
-                          const next = items.filter((_, i) => i !== idx);
-                          save(next);
-                        }}
-                        className="w-[33%] rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700"
-                      >
-                        ✕ Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <div className="space-y-16">
+            {groupedForPreview
+              .filter((g) => g.images.length && g.items.length)
+              .map((g, idx) => (
+                <div key={idx}>
+                  <CategoryPreview title={g.title} images={g.images} items={g.items} lang={previewLang} />
+                  <div className="mt-6 mx-auto w-full h-px bg-neutral-200" />
+                </div>
+              ))}
+            {groupedForPreview.every((g) => !g.images.length) && (
+              <div className="text-sm text-neutral-500">Brak danych do podglądu</div>
             )}
           </div>
-        </div>
-      </section>
+        </section>
+
+        {msg && <div className="text-sm text-neutral-700">{msg}</div>}
+      </div>
     </main>
   );
 }
