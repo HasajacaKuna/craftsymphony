@@ -15,6 +15,44 @@ function errToString(e: unknown): string {
   }
 }
 
+/* bezpieczne czytanie JSON z Response */
+async function readJSON<T = unknown>(
+  res: Response
+): Promise<T | null | { raw: string }> {
+  const ctype = res.headers.get("content-type") || "";
+  const text = await res.text().catch(() => "");
+
+  if (!res.ok) {
+    // spróbuj wyciągnąć message/error z JSON, a jak nie — zwróć tekst/status
+    try {
+      const parsed = text ? JSON.parse(text) : null;
+      const msg =
+        (parsed && (parsed.error || parsed.message)) ||
+        text ||
+        `HTTP ${res.status}`;
+      throw new Error(msg);
+    } catch {
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+  }
+
+  if (!text) return null;
+
+  if (ctype.includes("application/json")) {
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return { raw: text };
+    }
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return { raw: text };
+  }
+}
+
 /* ========= types ========= */
 type Lang = "pl" | "en";
 
@@ -324,15 +362,21 @@ export default function AdminPage() {
     return res;
   };
 
+  const authedJSON = async <T = unknown>(
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ): Promise<T | null | { raw: string }> => {
+    const res = await authedFetch(input, init);
+    return readJSON<T>(res);
+  };
+
   const tryAuth = async () => {
     try {
-      const r = await authedFetch("/api/admin/categories");
-      if (r.ok) {
-        setOk(true);
-        localStorage.setItem("admin_pwd", password);
-        setCats(await r.json());
-        await refreshItems();
-      }
+      const catsData = (await authedJSON<Category[]>("/api/admin/categories")) ?? [];
+      setCats(Array.isArray(catsData) ? catsData : []);
+      await refreshItems();
+      setOk(true);
+      localStorage.setItem("admin_pwd", password);
     } catch (e) {
       setOk(false);
       setMsg(errToString(e));
@@ -340,12 +384,13 @@ export default function AdminPage() {
   };
 
   const refreshCats = async () => {
-    const r = await authedFetch("/api/admin/categories");
-    setCats(await r.json());
+    const data = (await authedJSON<Category[]>("/api/admin/categories")) ?? [];
+    setCats(Array.isArray(data) ? data : []);
   };
+
   const refreshItems = async () => {
-    const r = await authedFetch("/api/admin/items");
-    setItems(await r.json());
+    const data = (await authedJSON<Item[]>("/api/admin/items")) ?? [];
+    setItems(Array.isArray(data) ? data : []);
   };
 
   /* ===== kategorie: create / edit / delete / reorder ===== */
@@ -354,12 +399,11 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      const r = await authedFetch("/api/admin/categories", {
+      await authedJSON("/api/admin/categories", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newCatName, slug: newCatSlug || undefined }),
       });
-      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
       setNewCatName("");
       setNewCatSlug("");
       await refreshCats();
@@ -373,11 +417,12 @@ export default function AdminPage() {
 
   const startEditCat = (c: Category) => setEditCat((s) => ({ ...s, [c._id]: { name: c.name, slug: c.slug } }));
 
-  const cancelEditCat = (id: string) => setEditCat((s) => {
-    const n = { ...s };
-    delete n[id];
-    return n;
-  });
+  const cancelEditCat = (id: string) =>
+    setEditCat((s) => {
+      const n = { ...s };
+      delete n[id];
+      return n;
+    });
 
   const saveCat = async (id: string) => {
     const data = editCat[id];
@@ -385,12 +430,11 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      const r = await authedFetch(`/api/admin/categories/${id}`, {
+      await authedJSON(`/api/admin/categories/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: data.name, slug: data.slug }),
       });
-      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
       cancelEditCat(id);
       await refreshCats();
       setMsg("Zapisano kategorię");
@@ -406,8 +450,7 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      const r = await authedFetch(`/api/admin/categories/${id}`, { method: "DELETE" });
-      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
+      await authedJSON(`/api/admin/categories/${id}`, { method: "DELETE" });
       await Promise.all([refreshCats(), refreshItems()]);
       setMsg("Usunięto kategorię");
     } catch (e) {
@@ -432,19 +475,17 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      const r1 = await authedFetch(`/api/admin/categories/${a._id}`, {
+      await authedJSON(`/api/admin/categories/${a._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order: bOrder }),
       });
-      if (!r1.ok) throw new Error((await r1.json()).error || "Błąd");
 
-      const r2 = await authedFetch(`/api/admin/categories/${b._id}`, {
+      await authedJSON(`/api/admin/categories/${b._id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order: aOrder }),
       });
-      if (!r2.ok) throw new Error((await r2.json()).error || "Błąd");
 
       await refreshCats();
     } catch (e) {
@@ -464,13 +505,18 @@ export default function AdminPage() {
 
       const fd = new FormData();
       fd.append("file", form.file);
-      const up = await authedFetch("/api/admin/upload", { method: "POST", body: fd });
-      if (!up.ok) throw new Error((await up.json()).error || "Błąd uploadu");
-      const upData = (await up.json()) as { path: string };
-
-      const r = await authedFetch("/api/admin/items", {
+      const upData = (await authedJSON<{ path: string }>("/api/admin/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        body: fd,
+      })) as { path: string } | null;
+
+      if (!upData || typeof upData !== "object" || !("path" in upData)) {
+        throw new Error("Błędna odpowiedź z uploadu");
+      }
+
+      await authedJSON("/api/admin/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           categoryId: form.categoryId,
           title: form.title,
@@ -482,7 +528,6 @@ export default function AdminPage() {
           imagePath: upData.path,
         }),
       });
-      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
 
       setForm({ categoryId: "", title: "", description: "", rozmiarMin: "", rozmiarMax: "", cenaPLN: "", numerPaska: "", file: null });
       await refreshItems();
@@ -510,11 +555,12 @@ export default function AdminPage() {
     }));
   };
 
-  const cancelEditItem = (id: string) => setEditItem((s) => {
-    const n = { ...s };
-    delete n[id];
-    return n;
-  });
+  const cancelEditItem = (id: string) =>
+    setEditItem((s) => {
+      const n = { ...s };
+      delete n[id];
+      return n;
+    });
 
   const saveItem = async (id: string) => {
     const data = editItem[id];
@@ -527,15 +573,20 @@ export default function AdminPage() {
       if (data.file) {
         const fd = new FormData();
         fd.append("file", data.file);
-        const up = await authedFetch("/api/admin/upload", { method: "POST", body: fd });
-        if (!up.ok) throw new Error((await up.json()).error || "Błąd uploadu");
-        const upData = (await up.json()) as { path: string };
+        const upData = (await authedJSON<{ path: string }>("/api/admin/upload", {
+          method: "POST",
+          body: fd,
+        })) as { path: string } | null;
+
+        if (!upData || typeof upData !== "object" || !("path" in upData)) {
+          throw new Error("Błędna odpowiedź z uploadu");
+        }
         imagePath = upData.path;
       }
 
-      const r = await authedFetch(`/api/admin/items/${id}`, {
+      await authedJSON(`/api/admin/items/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...API_HEADERS(password) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           categoryId: data.categoryId,
           title: data.title,
@@ -547,7 +598,6 @@ export default function AdminPage() {
           ...(imagePath ? { imagePath } : {}),
         }),
       });
-      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
 
       cancelEditItem(id);
       await refreshItems();
@@ -564,8 +614,7 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      const r = await authedFetch(`/api/admin/items/${id}`, { method: "DELETE" });
-      if (!r.ok) throw new Error((await r.json()).error || "Błąd");
+      await authedJSON(`/api/admin/items/${id}`, { method: "DELETE" });
       await refreshItems();
       setMsg("Usunięto przedmiot");
     } catch (e) {
@@ -642,12 +691,6 @@ export default function AdminPage() {
               required
             />
             {/* opcjonalny slug (jeśli backend nie generuje automatycznie) */}
-            <input
-              value={newCatSlug}
-              onChange={(e) => setNewCatSlug(e.target.value)}
-              placeholder="Slug (opcjonalnie)"
-              className="rounded-lg border border-neutral-300 px-3 py-2"
-            />
             <button disabled={loading} className="rounded-lg bg-neutral-900 text-white px-4 py-2">
               {loading ? "Zapisywanie…" : "Dodaj kategorię"}
             </button>
@@ -660,26 +703,6 @@ export default function AdminPage() {
               const canDown = i < sortedCats.length - 1;
               return (
                 <li key={c._id} className="py-3 flex items-center gap-3">
-                  {/* reorder */}
-                  <div className="flex flex-col gap-1">
-                    <button
-                      onClick={() => moveCat(c._id, -1)}
-                      disabled={!canUp || loading}
-                      title="Przenieś wyżej"
-                      className={`p-1.5 rounded border ${canUp ? "hover:bg-neutral-50" : "opacity-40 cursor-not-allowed"}`}
-                    >
-                      <ChevronUp className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => moveCat(c._id, 1)}
-                      disabled={!canDown || loading}
-                      title="Przenieś niżej"
-                      className={`p-1.5 rounded border ${canDown ? "hover:bg-neutral-50" : "opacity-40 cursor-not-allowed"}`}
-                    >
-                      <ChevronDown className="h-4 w-4" />
-                    </button>
-                  </div>
-
                   {/* content */}
                   {!isEditing ? (
                     <div className="flex-1">
@@ -703,6 +726,24 @@ export default function AdminPage() {
 
                   {/* actions */}
                   <div className="flex items-center gap-2">
+                    {/* move up/down */}
+                    <button
+                      onClick={() => moveCat(c._id, -1)}
+                      disabled={!canUp}
+                      className={`p-2 rounded ${canUp ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`}
+                      title="Przenieś w górę"
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => moveCat(c._id, 1)}
+                      disabled={!canDown}
+                      className={`p-2 rounded ${canDown ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`}
+                      title="Przenieś w dół"
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </button>
+
                     {!isEditing ? (
                       <>
                         <button onClick={() => startEditCat(c)} className="p-2 rounded hover:bg-neutral-100" title="Edytuj">
