@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { AnimatePresence, motion, useSpring } from "framer-motion";
 import {
   ChevronUp,
@@ -10,14 +10,13 @@ import {
   Linkedin,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
-/** Domyślne obrazki — możesz podmienić na własne ścieżki */
-const defaultImages = Array.from({ length: 10 }, (_, i) => `/images/${i + 1}.jpeg`);
-
+/* ===== Typy ===== */
 type BeltItem = {
   name: string;
   description: string;
-  price: string;
+  price: string | number; // << opcjonalnie
   upperSize: string;
   lowerSize: string;
 };
@@ -28,68 +27,204 @@ type CategoryData = {
   items: BeltItem[];
 };
 
+type ApiCategory = {
+  slug: string;
+  title: string;
+  images: string[];
+  items: BeltItem[];
+};
+
+type CatalogResponse = { categories: ApiCategory[] };
+
+type Lang = "pl" | "en";
+
+/* ===== UI teksty ===== */
+const UI_STRINGS: Record<
+  Lang,
+  {
+    navLeather: string;
+    navWood: string;
+    scrollUp: string;
+    scrollDown: string;
+    selectBelt: string;
+    heroAltPrefix: string;
+    schemaAlt: string;
+    numberLabel: string;
+    interestedHeading: string;
+    interestedText: string;
+    emailPlaceholder: string;
+    beltNoPlaceholder: string;
+    submit: string;
+    price: string;
+    about: string;
+    loading: string;
+    empty: string;
+  }
+> = {
+  pl: {
+    navLeather: "Skóra",
+    navWood: "Drewno",
+    scrollUp: "Przewiń w górę",
+    scrollDown: "Przewiń w dół",
+    selectBelt: "Wybierz pasek nr",
+    heroAltPrefix: "Pasek",
+    schemaAlt: "Schemat paska – rozmiar",
+    numberLabel: "Nr.",
+    interestedHeading: "Jestem zainteresowany paskiem?",
+    interestedText:
+      "Podaj e-mail oraz numer paska, a odezwiemy się z potwierdzeniem.",
+    emailPlaceholder: "Twój e-mail",
+    beltNoPlaceholder: "Nr paska",
+    submit: "Wyślij zapytanie",
+    price: "Cena:",
+    about:
+      "Każdy pasek powstaje w całości ręcznie – od doboru skóry, przez cięcie i barwienie, po wykończenie krawędzi. Wierzymy w rzemiosło, które ma duszę: staranność detalu i ponadczasowy charakter. Nasze paski łączą tradycję z nowoczesną precyzją — projektowane z myślą o trwałości i pięknie, które dojrzewa z czasem.",
+    loading: "Ładowanie katalogu…",
+    empty: "Brak produktów do wyświetlenia.",
+  },
+  en: {
+    navLeather: "Leather",
+    navWood: "Wood",
+    scrollUp: "Scroll up",
+    scrollDown: "Scroll down",
+    selectBelt: "Select belt no.",
+    heroAltPrefix: "Belt",
+    schemaAlt: "Belt diagram — size",
+    numberLabel: "No.",
+    interestedHeading: "Interested in a belt?",
+    interestedText:
+      "Leave your email and belt number and we’ll get back to you with details.",
+    emailPlaceholder: "Your email",
+    beltNoPlaceholder: "Belt no.",
+    submit: "Send request",
+    price: "Price:",
+    about:
+      "Each belt is crafted entirely by hand — from leather selection and cutting to dyeing and edge finishing. We believe in soul-filled craftsmanship: meticulous detail and timeless character. Our belts blend tradition with modern precision, designed for durability and beauty that matures over time.",
+    loading: "Loading catalog…",
+    empty: "No products to display.",
+  },
+};
+
 type LuxuryLandingProps = {
   logo?: string;
   aboutImage?: string;
-  /** Opcjonalnie możesz podać własne dane kategorii (obrazy + paski) */
-  categoriesOverride?: Partial<Record<"M" | "L" | "ART", Partial<CategoryData>>>;
+  defaultLang?: Lang;
 };
 
-/** ——— Pojedyncza sekcja kategorii ——— */
+type Labels = (typeof UI_STRINGS)["pl"];
+
+function formatPriceForLang(price: string | number | undefined, lang: Lang) {
+  if (price == null) return "—";
+
+  // Liczba z bazy
+  if (typeof price === "number") {
+    if (lang === "pl") {
+      return `${price.toLocaleString("pl-PL")} PLN`;
+    }
+    const usd = price / 4;
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 2,
+    }).format(usd);
+  }
+
+  // String z bazy (np. "1 190 PLN")
+  if (lang === "pl") return price;
+
+  const numericPLN = Number(
+    String(price)
+      .replace(/[^\d.,]/g, "")
+      .replace(/\s/g, "")
+      .replace(",", ".")
+  );
+
+  if (!isFinite(numericPLN)) return price;
+
+  const usd = numericPLN / 4;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(usd);
+}
+
+/* ===== Sekcja kategorii (renderuje tylko to, co przyjdzie z API) ===== */
 function CategorySection({
   title,
-  images = defaultImages,
+  images = [],
   items,
-}: CategoryData) {
+  labels,
+  lang,
+}: CategoryData & { labels: Labels; lang: Lang }) {
+  // 1) HOOKI ZAWSZE NA GÓRZE (zero warunków/returnów przed nimi)
   const [active, setActive] = useState(0);
   const [scrollIndex, setScrollIndex] = useState(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
+  // Stałe UI
   const VISIBLE = 4;
   const THUMB_H = 96;
   const GAP = 12;
+  const ySpring = useSpring(0, { stiffness: 120, damping: 20 });
 
-  // Zgrywamy liczbę pozycji z liczbą obrazków
-  const belts: BeltItem[] = useMemo(() => {
-    const copy = [...items];
-    if (copy.length === 0) return [];
-    while (copy.length < images.length) copy.push(items[items.length - 1]);
-    return copy.slice(0, images.length);
-  }, [images.length, items]);
+  // 2) LOGIKA DANYCH (może być warunkowa, ale bez wpływu na hooki)
+  const count = Math.min(images.length, items.length);
+  const displayImages = images.slice(0, count);
+  const displayItems = items.slice(0, count);
+  const belt = displayItems[active];
 
-  // smooth scroll miniaturek
-  const ySpring = useSpring(-(scrollIndex * (THUMB_H + GAP)), {
-    stiffness: 120,
-    damping: 20,
-  });
-
-  const scrollUp = () => setScrollIndex((s) => Math.max(0, s - 1));
-  const scrollDown = () => setScrollIndex((s) => Math.min(images.length - VISIBLE, s + 1));
-
-  // trzymaj aktywną miniaturę w widoku
+  // Utrzymanie widoczności aktywnej miniatury
   useEffect(() => {
+    if (count === 0) return;
     if (active < scrollIndex) setScrollIndex(active);
-    if (active > scrollIndex + VISIBLE - 1) setScrollIndex(active - (VISIBLE - 1));
+    if (active > scrollIndex + VISIBLE - 1)
+      setScrollIndex(active - (VISIBLE - 1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+  }, [active, count]);
 
+  // Aktualizacja sprężyny przesuwu listy miniaturek
   useEffect(() => {
+    if (count === 0) return;
     ySpring.set(-(scrollIndex * (THUMB_H + GAP)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scrollIndex]);
+  }, [count, scrollIndex, ySpring]);
+
+  // Swipe (mobile)
+  const onTouchStart = (e: React.TouchEvent) =>
+    setTouchStartX(e.touches[0].clientX);
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const THRESHOLD = 40;
+    if (Math.abs(dx) > THRESHOLD) {
+      setActive((prev) => {
+        const next = prev + (dx < 0 ? 1 : -1);
+        return Math.max(0, Math.min(displayImages.length - 1, next));
+      });
+    }
+    setTouchStartX(null);
+  };
+
+  // Scroll przyciski (miniatury / desktop)
+  const maxScrollIndex = Math.max(0, displayImages.length - VISIBLE);
+  const scrollUp = () => setScrollIndex((s) => Math.max(0, s - 1));
+  const scrollDown = () => setScrollIndex((s) => Math.min(maxScrollIndex, s + 1));
+
+  // Po hookach można bezpiecznie warunkowo nie renderować
+  if (count === 0) return null;
 
   return (
     <div>
       {/* Tytuł kategorii */}
       <div className="mb-6 text-center">
         <h1 className="font-serif text-2xl md:text-3xl tracking-wide">
-          {title}{" "}
-          <span className="text-neutral-400 text-base align-middle"></span>
+          Craft Symphony - {title}
         </h1>
       </div>
 
       {/* HERO */}
       <div className="relative">
-        <div className="aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm border border-neutral-200 relative">
+        <div className="relative aspect-[4/3] md:aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm border border-neutral-200">
           <AnimatePresence mode="wait">
             <motion.div
               key={`hero-${title}-${active}`}
@@ -98,273 +233,412 @@ function CategorySection({
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.5, ease: "easeOut" }}
               className="relative h-full w-full"
+              onTouchStart={onTouchStart}
+              onTouchEnd={onTouchEnd}
             >
-              <img
-                src={images[active]}
-                alt={belts[active]?.name ?? `Pasek ${active + 1}`}
-                className="h-full w-full object-cover"
+              <Image
+                src={displayImages[active]}
+                alt={`${labels.heroAltPrefix} ${belt?.name ?? `${active + 1}`}`}
+                fill
+                sizes="100vw"
+                className="object-cover"
+                priority={false}
               />
-
-              {/* numer paska w lewym dolnym rogu */}
             </motion.div>
           </AnimatePresence>
 
-          {/* MINIATURY z numerkami */}
-          <div className="absolute inset-y-0 right-4 my-4 flex flex-col items-center justify-center gap-3 select-none">
-            <div className="absolute inset-y-0 -inset-x-2 rounded-2xl bg-black/35 backdrop-blur-sm border border-white/20" />
+          {/* MINIATURY (DESKTOP) */}
+          {displayImages.length > 1 && (
+            <div className="hidden md:flex absolute inset-y-0 right-4 my-4 flex-col items-center justify-center gap-3 select-none">
+              <div className="absolute inset-y-0 -inset-x-2 rounded-2xl bg-black/35 backdrop-blur-sm border border-white/20" />
 
-            <button
-              onClick={scrollUp}
-              className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 hover:bg-black/40 text-white shadow-sm"
-              aria-label="Przewiń w górę"
-            >
-              <ChevronUp className="h-5 w-5" />
-            </button>
+              <button
+                onClick={scrollUp}
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 hover:bg-black/40 text-white shadow-sm"
+                aria-label={labels.scrollUp}
+              >
+                <ChevronUp className="h-5 w-5" />
+              </button>
 
-            <div className="relative h-[calc(4*96px+3*12px)] w-28 overflow-hidden rounded-xl border border-white/20 bg-transparent">
-              <motion.div style={{ y: ySpring }} className="absolute top-0 left-0 w-full">
-                <div className="flex flex-col gap-3 p-0">
-                  {images.map((src, i) => (
-<button
-  key={i}
-  onClick={() => setActive(i)}
-  className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${
-    i === active ? "border-neutral-900 shadow" : "border-neutral-300 hover:border-neutral-500"
-  }`}
-  aria-label={`Wybierz pasek nr ${i + 1}`}
->
-  <img src={src} alt={`thumb-${i + 1}`} className="h-full w-full object-cover" />
-</button>
+              <div className="relative h-[calc(4*96px+3*12px)] w-28 overflow-hidden rounded-xl border border-white/20 bg-transparent">
+                <motion.div
+                  style={{ y: ySpring }}
+                  className="absolute top-0 left-0 w-full"
+                >
+                  <div className="flex flex-col gap-3 p-0">
+                    {displayImages.map((src, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setActive(i)}
+                        className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${
+                          i === active
+                            ? "border-neutral-900 shadow"
+                            : "border-neutral-300 hover:border-neutral-500"
+                        }`}
+                        aria-label={`${labels.selectBelt} ${i + 1}`}
+                      >
+                        <div className="relative h-24 w-full">
+                          <Image
+                            src={src}
+                            alt={`thumb-${i + 1}`}
+                            fill
+                            sizes="112px"
+                            className="object-cover rounded-lg"
+                          />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              </div>
 
-                  ))}
-                </div>
-              </motion.div>
+              <button
+                onClick={scrollDown}
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 hover:bg-black/40 text-white shadow-sm"
+                aria-label={labels.scrollDown}
+              >
+                <ChevronDown className="h-5 w-5" />
+              </button>
             </div>
-
-            <button
-              onClick={scrollDown}
-              className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 hover:bg-black/40 text-white shadow-sm"
-              aria-label="Przewiń w dół"
-            >
-              <ChevronDown className="h-5 w-5" />
-            </button>
-          </div>
+          )}
         </div>
       </div>
 
+      {/* MINIATURY (MOBILE) */}
+      {displayImages.length > 1 && (
+        <div className="md:hidden mt-3">
+          <div className="flex gap-3 overflow-x-auto px-1 py-1 snap-x snap-mandatory">
+            {displayImages.map((src, i) => (
+              <button
+                key={`m-thumb-${i}`}
+                onClick={() => setActive(i)}
+                className={`relative h-20 w-20 flex-none overflow-hidden rounded-lg border snap-start ${
+                  i === active
+                    ? "border-neutral-900 ring-2 ring-neutral-900"
+                    : "border-neutral-300 hover:border-neutral-500"
+                }`}
+                aria-label={`${labels.selectBelt} ${i + 1}`}
+              >
+                <div className="relative h-20 w-20">
+                  <Image
+                    src={src}
+                    alt={`thumb-${i + 1}`}
+                    fill
+                    sizes="80px"
+                    className="object-cover rounded-lg"
+                  />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* OPIS + ROZMIARÓWKA */}
-      <div className="mt-8 text-center">
-<div className="text-center mb-3">
-  <h3 className="font-serif text-lg tracking-wide">
-    No.&nbsp;{active + 1}&nbsp;{belts[active]?.name ?? "—"}
-  </h3>
-  <p className="text-sm text-neutral-600 max-w-3xl mx-auto">
-    {belts[active]?.description ?? "—"}
-  </p>
-</div>
+      <div className="mt-6 md:mt-8 text-center">
+        <div className="text-center mb-3">
+          <h3 className="font-serif text-base sm:text-lg tracking-wide">
+            {labels.numberLabel}&nbsp;{active + 1}&nbsp;{belt?.name ?? "—"}
+          </h3>
+          <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">
+            {belt?.description ?? "—"}
+          </p>
+        </div>
 
         <div className="max-w-4xl mx-auto">
-          {/* GÓRNA – większa wartość */}
-          <div className="text-center text-sm text-neutral-600 mb-3">
-            {belts[active]?.upperSize ?? "—"}
+          <div className="text-center text-sm text-neutral-600 mb-[-48px]">
+            {belt?.upperSize ?? "—"}
           </div>
 
-          {/* Obrazek schematu */}
-          <div className="rounded-2xl border border-neutral-200 overflow-hidden">
-            <img
-              src="/images/belt2.png"
-              alt="Schemat paska – rozmiar"
-              className="w-1/3 h-auto object-contain mx-auto"
-            />
+          <div className="rounded-2xl overflow-hidden">
+            <div className="relative mx-auto w-2/3 md:w-1/3 aspect-[3/2]">
+              <Image
+                src="/images/belt2.png"
+                alt={labels.schemaAlt}
+                fill
+                sizes="(max-width:768px) 66vw, 33vw"
+                className="object-contain"
+                priority={false}
+              />
+            </div>
           </div>
 
-          {/* DOLNA – mniejsza wartość */}
-          <div className="text-center text-sm text-neutral-600 mt-3">
-            {belts[active]?.lowerSize ?? "—"}
+          <div className="text-center text-sm text-neutral-600 mt-[-48px]">
+            {belt?.lowerSize ?? "—"}
           </div>
         </div>
 
-        <p className="mt-5 text-center text-[13px] text-neutral-600">
-          Cena: <span className="font-medium tracking-wide">{belts[active]?.price ?? "—"}</span>
+        <p className="mt-8 text-center text-[13px] text-neutral-600 mb-16 italic">
+          {labels.price}{" "}
+          <span className="font-medium tracking-wide">
+            {formatPriceForLang(belt?.price, lang)}
+          </span>
         </p>
       </div>
     </div>
   );
 }
 
-/** ——— STRONA / GŁÓWNY KOMPONENT ——— */
+/* ===== Główny komponent – TYLKO dane z bazy ===== */
 export default function LuxuryLanding({
   logo = "/images/logo3.png",
   aboutImage = "/images/1.png",
-  categoriesOverride,
+  defaultLang = "pl",
 }: LuxuryLandingProps) {
-  // Domyślne dane trzech kategorii
-  const categories: Record<"M" | "L" | "ART", CategoryData> = {
-    M: {
-      title: "Craft Symphony- Paski M i L",
-      images: defaultImages.slice(0, 6),
-      items: [
-        { name: "Modena Black", description: "Klasyczny czarny, połysk, do garnituru.", price: "1 190 PLN", upperSize: "140 cm", lowerSize: "90 cm" },
-        { name: "Milan Cognac", description: "Cognac z patyną, ręczne przeszycie.", price: "1 220 PLN", upperSize: "138 cm", lowerSize: "88 cm" },
-        { name: "Marseille Chestnut", description: "Kasztanowy półmat, elegancki casual.", price: "1 150 PLN", upperSize: "136 cm", lowerSize: "86 cm" },
-        { name: "Madrid Sand", description: "Piaskowy mat, kontrastowa nić.", price: "1 130 PLN", upperSize: "134 cm", lowerSize: "84 cm" },
-        { name: "Munich Slate", description: "Chłodny łupek, minimalistyczna klamra.", price: "1 210 PLN", upperSize: "132 cm", lowerSize: "82 cm" },
-        { name: "Malmo Walnut", description: "Orzechowy półmat, uniwersalny.", price: "1 180 PLN", upperSize: "130 cm", lowerSize: "80 cm" },
-      ],
-    },
-    L: {
-      title: "Craft Symphony - Paski XL i XXL",
-      images: defaultImages.slice(2, 8),
-      items: [
-        { name: "Lugano Espresso", description: "Głęboki brąz espresso, matowa klamra.", price: "1 250 PLN", upperSize: "145 cm", lowerSize: "95 cm" },
-        { name: "Lisbon Tan", description: "Jasnobrązowy z pull-upem, świetny do jeansów.", price: "1 180 PLN", upperSize: "142 cm", lowerSize: "92 cm" },
-        { name: "Lyon Carbon", description: "Grafit półmat, nowoczesny charakter.", price: "1 290 PLN", upperSize: "140 cm", lowerSize: "90 cm" },
-        { name: "Leeds Cocoa", description: "Ciemne kakao, gładka faktura.", price: "1 260 PLN", upperSize: "148 cm", lowerSize: "98 cm" },
-        { name: "Lima Umber", description: "Ciepły brąz umber, pełne przeszycie.", price: "1 240 PLN", upperSize: "146 cm", lowerSize: "96 cm" },
-        { name: "Lorient Night", description: "Głęboka czerń, satynowa klamra.", price: "1 300 PLN", upperSize: "144 cm", lowerSize: "94 cm" },
-      ],
-    },
-    ART: {
-      title: "Craft Symphony - Paski Artystyczne",
-      images: defaultImages.slice(4, 10),
-      items: [
-        { name: "Aurora Indigo", description: "Ręczne cieniowanie granatu, unikatowy efekt.", price: "1 490 PLN", upperSize: "135 cm", lowerSize: "85 cm" },
-        { name: "Eclipse Olive", description: "Oliwkowy satynowy mat, nieregularna faktura.", price: "1 530 PLN", upperSize: "132 cm", lowerSize: "84 cm" },
-        { name: "Crimson Edge", description: "Czerwone krawędzie, farbowanie ręczne.", price: "1 590 PLN", upperSize: "130 cm", lowerSize: "82 cm" },
-        { name: "Nebula Teal", description: "Morski teal z głębią koloru.", price: "1 560 PLN", upperSize: "134 cm", lowerSize: "83 cm" },
-        { name: "Vortex Charcoal", description: "Węglowa czerń z mikroteksturą.", price: "1 520 PLN", upperSize: "133 cm", lowerSize: "81 cm" },
-        { name: "Saffron Fade", description: "Złocista poświata, artystyczne przejścia.", price: "1 580 PLN", upperSize: "131 cm", lowerSize: "80 cm" },
-      ],
-    },
-  };
+  const [lang, setLang] = useState<Lang>(defaultLang);
+  const t = UI_STRINGS[lang];
 
-  // Ewentualne nadpisania z props
-  if (categoriesOverride?.M) categories.M = { ...categories.M, ...categoriesOverride.M };
-  if (categoriesOverride?.L) categories.L = { ...categories.L, ...categoriesOverride.L };
-  if (categoriesOverride?.ART) categories.ART = { ...categories.ART, ...categoriesOverride.ART };
+  const [data, setData] = useState<ApiCategory[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // persist + lang attr
+  useEffect(() => {
+    const saved =
+      typeof window !== "undefined"
+        ? ((localStorage.getItem("cs_lang") as Lang | null) || null)
+        : null;
+    if (saved) setLang(saved);
+  }, []);
+
+  useEffect(() => {
+    // useEffect i tak nie działa na serwerze – nie trzeba warunkować wywołania hooka
+    localStorage?.setItem?.("cs_lang", lang);
+    try {
+      document.documentElement.lang = lang;
+    } catch {
+      // ignore
+    }
+  }, [lang]);
+
+  // fetch katalogu z backendu
+  useEffect(() => {
+    let abort = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await fetch("/api/catalog", { cache: "no-store" });
+        const json: CatalogResponse = await res.json();
+        if (!abort) setData(json.categories || []);
+      } catch {
+        if (!abort) setData([]);
+      } finally {
+        if (!abort) setLoading(false);
+      }
+    })();
+    return () => {
+      abort = true;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#f5f5ef] text-neutral-900 selection:bg-neutral-900 selection:text-white">
       {/* NAVBAR */}
-      <header className="fixed top-0 inset-x-0 z-50 bg-[#f5f5ef] backdrop-blur">
-        <div className="relative mx-auto max-w-6xl h-20 flex items-center justify-center overflow-visible px-4">
-          <nav className="flex items-center gap-4 md:gap-6">
-            <Link
-              href="/skora"
-              className="relative text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
-                         hover:text-neutral-950 transition
-                         after:absolute after:left-0 after:-bottom-1 after:h-[1px] after:w-0
-                         after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full
-                         focus:outline-none focus-visible:after:w-full"
-            >
-              Skóra
-            </Link>
+      <header className="fixed top-0 inset-x-0 z-50 bg-[#f5f5ef] backdrop-blur supports-[backdrop-filter]:bg-[#f5f5ef]">
+        <div className="relative mx-auto max-w-6xl h-16 md:h-20 px-4">
+          {/* 3 kolumny: lewa pusta | środkowa z grupą [Skóra | LOGO | Drewno] | prawa z językami */}
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center h-full">
+            <div /> {/* pusty wyrównywacz */}
 
-            <img
-              src={logo}
-              alt="Craft Symphony"
-              className="h-20 w-20 md:h-20 md:w-20 object-contain drop-shadow-sm"
-            />
+            {/* ŚRODEK: Skóra | LOGO | Drewno — całość wycentrowana */}
+            <div className="justify-self-center">
+              <div className="flex items-center gap-6 md:gap-8">
+                <Link
+                  href="/"
+                  className="relative text-[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
+                       hover:text-neutral-950 transition
+                       after:absolute after:left-0 after:-bottom-1 after:h-[1px] after:w-0
+                       after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full
+                       focus:outline-none focus-visible:after:w-full"
+                >
+                  {t.navLeather}
+                </Link>
 
-            <Link
-              href="/drewno"
-              className="relative text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
-                         hover:text-neutral-950 transition
-                         after:absolute after:right-0 after:-bottom-1 after:h-[1px] after:w-0
-                         after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full
-                         focus:outline-none focus-visible:after:w-full"
-            >
-              Drewno
-            </Link>
-          </nav>
+                <div className="relative h-14 w-14 md:h-20 md:w-20 shrink-0">
+                  <Image
+                    src={logo}
+                    alt="Craft Symphony"
+                    fill
+                    sizes="80px"
+                    className="object-contain"
+                    priority={false}
+                  />
+                </div>
+
+                <Link
+                  href="/"
+                  className="relative text-[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
+                       hover:text-neutral-950 transition
+                       after:absolute after:right-0 after:-bottom-1 after:h-[1px] after:w-0
+                       after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full
+                       focus:outline-none focus-visible:after:w-full"
+                >
+                  {t.navWood}
+                </Link>
+              </div>
+            </div>
+
+            {/* PRAWO: przełącznik języka — w prawej kolumnie, nie rusza wycentrowania */}
+            <div className="justify-self-end">
+              <div className="flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/80 backdrop-blur px-1.5 py-1 shadow-sm">
+                {/* PL */}
+                <button
+                  onClick={() => setLang("pl")}
+                  aria-pressed={lang === "pl"}
+                  aria-label="Polski"
+                  title="Polski"
+                  className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors
+              focus:outline-none focus:ring-2 focus:ring-[#f5f5ef]
+              ${lang === "pl" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
+                >
+                  <Image
+                    src="/images/poland.png"
+                    alt=""
+                    width={20}
+                    height={14}
+                    className="rounded-[2px] shadow-sm"
+                    priority={false}
+                  />
+                  <span className="sr-only">PL</span>
+                </button>
+
+                {/* EN */}
+                <button
+                  onClick={() => setLang("en")}
+                  aria-pressed={lang === "en"}
+                  aria-label="English"
+                  title="English"
+                  className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors
+              focus:outline-none focus:ring-2 focus:ring-[#f5f5ef]
+              ${lang === "en" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
+                >
+                  <Image
+                    src="/images/england.png"
+                    alt=""
+                    width={20}
+                    height={14}
+                    className="rounded-[2px] shadow-sm"
+                    priority={false}
+                  />
+                  <span className="sr-only">EN</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </header>
 
       {/* MAIN */}
-      <main className="pt-24 pb-24">
-        <section className="mx-auto max-w-6xl px-4 space-y-24">
-          {/* ——— Sekcja 1: Paski M ——— */}
-          <CategorySection {...categories.M} />
+      <main className="pt-20 md:pt-24 pb-24">
+        <section className="mx-auto max-w-6xl px-4 space-y-16 md:space-y-24">
+          {/* LOADING */}
+          {loading && (
+            <div className="text-center text-sm text-neutral-600">{t.loading}</div>
+          )}
 
-          <div className="mx-auto w-[100%] h-px bg-neutral-300" />
+          {/* CATEGORIES FROM DB */}
+          {!loading &&
+            data &&
+            data
+              .filter((c) => (c.images?.length || 0) > 0 && (c.items?.length || 0) > 0)
+              .map((cat) => (
+                <div key={cat.slug}>
+                  <CategorySection
+                    title={cat.title}
+                    images={cat.images}
+                    items={cat.items}
+                    labels={t}
+                    lang={lang}
+                  />
+                  <div className="mx-auto w-[100%] h-px bg-neutral-300" />
+                </div>
+              ))}
 
-          {/* ——— Sekcja 2: Paski L ——— */}
-          <CategorySection {...categories.L} />
+          {/* EMPTY STATE */}
+          {!loading &&
+            (data?.filter(
+              (c) => (c.images?.length || 0) > 0 && (c.items?.length || 0) > 0
+            ).length ?? 0) === 0 && (
+              <div className="text-center text-sm text-neutral-600">{t.empty}</div>
+            )}
 
-          <div className="mx-auto w-[100%] h-px bg-neutral-300" />
-
-          {/* ——— Sekcja 3: Paski Artistics ——— */}
-          <CategorySection {...categories.ART} />
-
-          <div className="mt-16 mx-auto w-[100%] h-px bg-neutral-300" />
-
-          {/* ——— O rzemiośle ——— */}
-          <div className="mt-6 text-center">
-            <p className="mt-6 max-w-3xl mx-auto text-sm leading-relaxed text-neutral-700">
-              Każdy pasek powstaje w całości ręcznie – od doboru skóry, przez cięcie i barwienie, po wykończenie krawędzi.
-              Wierzymy w rzemiosło, które ma duszę: staranność detalu i ponadczasowy charakter. Nasze paski łączą tradycję
-              z nowoczesną precyzją — projektowane z myślą o trwałości i pięknie, które dojrzewa z czasem.
+          {/* O rzemiośle */}
+          <div className="mt-4 md:mt-6 text-center">
+            <p className="mt-4 md:mt-6 max-w-3xl mx-auto text-sm leading-relaxed text-neutral-700 px-2 italic">
+              {t.about}
             </p>
-            <img src={aboutImage} alt="Craft" className="mx-auto h-124 w-auto object-contain opacity-90" />
+            <div className="relative mx-auto h-64 md:h-[31rem] w-full max-w-3xl">
+              <Image
+                src={aboutImage}
+                alt="Craft"
+                fill
+                sizes="(max-width:768px) 90vw, 60vw"
+                className="object-contain"
+                priority={false}
+              />
+            </div>
           </div>
 
-          {/* ——— Formularz: Zamów pasek ——— */}
-          <div className="mt-16 text-center">
-            <h3 className="font-serif text-xl tracking-wide">Jestem zainteresowany paskiem?</h3>
-            <p className="mt-2 text-sm text-neutral-600">
-              Podaj e-mail oraz numer paska, a odezwiemy się z potwierdzeniem.
-            </p>
+          {/* Formularz */}
+          <div className="mt-12 md:mt-16 text-center">
+            <h3 className="font-serif text-lg md:text-xl tracking-wide">
+              {t.interestedHeading}
+            </h3>
+            <p className="mt-2 text-sm text-neutral-600 px-2">{t.interestedText}</p>
 
             <form
               onSubmit={(e) => e.preventDefault()}
-              className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center"
+              className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
             >
               <input
                 type="email"
                 required
-                placeholder="Twój e-mail"
-                className="w-full sm:w-80 rounded-xl border border-neutral-300 bg-[##f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+                placeholder={t.emailPlaceholder}
+                className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
               />
               <input
                 type="number"
                 min={1}
-                max={10}
-                placeholder="Nr paska"
-                className="w-full sm:w-40 rounded-xl border border-neutral-300 bg-[##f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-                aria-label="Numer paska"
+                max={9999}
+                placeholder={t.beltNoPlaceholder}
+                className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+                aria-label={t.beltNoPlaceholder}
               />
-              <button className="px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-900 hover:text-white transition">
-                Wyślij zapytanie
+              <button className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-900 hover:text-white transition">
+                {t.submit}
               </button>
             </form>
           </div>
 
-          {/* ——— Stopka ——— */}
-{/* --- STOPKA (sklejona do kreski) --- */}
-<div className="space-y-2"> {/* kontrolujesz odstępy lokalnie */}
-  <div className="mx-auto w-full h-px bg-neutral-300" />  {/* bez mt-16 */}
-  
-  <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-6 text-sm">
-    <div className="md:justify-self-start text-center md:text-left text-neutral-700">
-      <div className="font-medium">kontakt@craftsymphony.pl</div>
-      <div className="mt-1">+48 600 000 000</div>
-    </div>
+          {/* Stopka */}
+          <div className="space-y-2">
+            <div className="mx-auto w-full h-px bg-neutral-300" />
 
-    <div className="text-center text-xs text-neutral-500" />
+            <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-6 text-sm px-2">
+              <div className="md:justify-self-start text-center md:text-left text-neutral-700">
+                <div className="font-medium">kontakt@craftsymphony.pl</div>
+                <div className="mt-1">+48 692 296 979</div>
+              </div>
 
-    <div className="md:justify-self-end flex items-center justify-center md:justify-end gap-5 text-neutral-700">
-      <Link href="#" aria-label="Facebook" className="hover:opacity-80"><Facebook /></Link>
-      <Link href="#" aria-label="Instagram" className="hover:opacity-80"><Instagram /></Link>
-      <Link href="#" aria-label="YouTube" className="hover:opacity-80"><Youtube /></Link>
-      <Link href="#" aria-label="LinkedIn" className="hover:opacity-80"><Linkedin /></Link>
-    </div>
-  </div>
+              <div className="text-center text-xs text-neutral-500" />
 
-  <div className="text-center text-xs text-neutral-500">
-    © 2025 Craft Symphony
-  </div>
-</div>
+              <div className="md:justify-self-end flex items-center justify-center md:justify-end gap-5 text-neutral-700">
+                <Link href="#" aria-label="Facebook" className="hover:opacity-80">
+                  <Facebook />
+                </Link>
+                <Link href="#" aria-label="Instagram" className="hover:opacity-80">
+                  <Instagram />
+                </Link>
+                <Link href="#" aria-label="YouTube" className="hover:opacity-80">
+                  <Youtube />
+                </Link>
+                <Link href="#" aria-label="LinkedIn" className="hover:opacity-80">
+                  <Linkedin />
+                </Link>
+              </div>
+            </div>
 
+            <div className="text-center text-xs text-neutral-500">© 2025 Craft Symphony</div>
+          </div>
         </section>
       </main>
     </div>
