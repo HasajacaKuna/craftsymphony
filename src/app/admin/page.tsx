@@ -75,6 +75,7 @@ type Item = {
   imagePath?: string; // JEDNO zdjęcie
 };
 
+// 1) BeltItem – dodaj numer:
 type BeltItem = {
   name: string;
   description: string;
@@ -82,8 +83,10 @@ type BeltItem = {
   upperSize: string;
   lowerSize: string;
   mainSize?: string | number;
-  image?: string; // JEDNO zdjęcie
+  image?: string;
+  beltNo?: number; // ⇦ DODANE
 };
+
 
 // Type guard for populated category
 function isCatObj(x: Item["categoryId"]): x is CategoryRef {
@@ -224,8 +227,8 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
                         key={i}
                         onClick={() => setActive(i)}
                         className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${i === active ? "border-neutral-900 shadow" : "border-neutral-300 hover:border-neutral-500"}`}
-                        aria-label={`${t.numberLabel} ${i + 1}`}
-                        title={`Pasek ${i + 1}`}
+aria-label={`${t.numberLabel} ${(belts[i]?.beltNo ?? i + 1)}`}
+title={`Pasek ${(belts[i]?.beltNo ?? i + 1)}`}
                       >
                         <div className="relative h-24 w-full">
                           {src ? (
@@ -260,9 +263,23 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
 
       <div className="mt-6 md:mt-8 text-center">
         <div className="text-center mb-3">
-          <h3 className="font-serif text-base sm:text-lg tracking-wide">
-            {t.numberLabel} {active + 1} {hero?.name ?? "—"}
-          </h3>
+// Przyciski selektora poniżej galerii:
+{belts.length > 1 && (
+  <div className="mt-3 flex flex-wrap justify-center gap-2">
+    {belts.map((b, i) => (
+      <button
+        key={i}
+        onClick={() => setActive(i)}
+        className={`px-3 py-1.5 rounded-full border text-sm ${i === active ? "bg-neutral-900 text-white border-neutral-900" : "bg-white hover:bg-neutral-50"}`}
+        title={`${t.numberLabel} ${b.beltNo ?? i + 1}`}
+        aria-label={`${t.numberLabel} ${b.beltNo ?? i + 1}`}
+      >
+        {t.numberLabel} {b.beltNo ?? i + 1}
+      </button>
+    ))}
+  </div>
+)}
+
           <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">{hero?.description ?? "—"}</p>
         </div>
 
@@ -673,22 +690,25 @@ export default function AdminPage() {
         })
         .sort((a, b) => (a.numerPaska ?? 0) - (b.numerPaska ?? 0));
 
-      const belts: BeltItem[] = its.map((i) => {
-        const namePL = i.title || "";
-        const descPL = i.description || "";
-        const nameEN = enCache[i._id]?.titleEn || i.titleEn;
-        const descEN = enCache[i._id]?.descriptionEn || i.descriptionEn;
-        const useEN = autoTranslateEN || previewLang === "en";
-        return {
-          name: useEN ? nameEN || namePL : namePL,
-          description: useEN ? descEN || descPL : descPL,
-          price: i.cenaPLN,
-          upperSize: `${Math.max(i.rozmiarMin, i.rozmiarMax)} cm`,
-          lowerSize: `${Math.min(i.rozmiarMin, i.rozmiarMax)} cm`,
-          mainSize: typeof i.rozmiarGlowny === "number" && !isNaN(i.rozmiarGlowny) ? `${i.rozmiarGlowny} cm` : undefined,
-          image: i.imagePath,
-        };
-      });
+// 2) groupedForPreview – podczas mapowania dodaj beltNo
+const belts: BeltItem[] = its.map((i) => {
+  const namePL = i.title || "";
+  const descPL = i.description || "";
+  const nameEN = enCache[i._id]?.titleEn || i.titleEn;
+  const descEN = enCache[i._id]?.descriptionEn || i.descriptionEn;
+  const useEN = autoTranslateEN || previewLang === "en";
+  return {
+    name: useEN ? nameEN || namePL : namePL,
+    description: useEN ? descEN || descPL : descPL,
+    price: i.cenaPLN,
+    upperSize: `${Math.max(i.rozmiarMin, i.rozmiarMax)} cm`,
+    lowerSize: `${Math.min(i.rozmiarMin, i.rozmiarMax)} cm`,
+    mainSize: typeof i.rozmiarGlowny === "number" && !isNaN(i.rozmiarGlowny) ? `${i.rozmiarGlowny} cm` : undefined,
+    image: i.imagePath,
+    beltNo: i.numerPaska, // ⇦ DODANE
+  };
+});
+
       return { title: c.name, belts };
     });
   }, [cats, items, previewLang, autoTranslateEN, enCache]);
