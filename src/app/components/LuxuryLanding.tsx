@@ -13,30 +13,40 @@ import Link from "next/link";
 import Image from "next/image";
 
 /* ===== Typy ===== */
-type BeltItem = {
+export type BeltItem = {
   name: string;
   description: string;
-  price: string | number; // << opcjonalnie
+  /** opcjonalnie, jeśli API zwraca od razu EN */
+  nameEn?: string;
+  descriptionEn?: string;
+  /** cena może przyjść jako number (PLN) lub string (np. "1 190 PLN") */
+  price: string | number;
   upperSize: string;
   lowerSize: string;
+  /** NOWE: galeria zdjęć per pasek */
+  images?: string[];
+  /** NOWE: rozmiar główny */
+  mainSize?: string | number;
 };
 
-type CategoryData = {
+export type CategoryData = {
   title: string;
+  /** Fallback – jeśli item nie ma własnych zdjęć, użyjemy zdjęć kategorii */
   images?: string[];
   items: BeltItem[];
 };
 
-type ApiCategory = {
+export type ApiCategory = {
   slug: string;
   title: string;
-  images: string[];
+  /** Może nie istnieć, jeśli przechodzimy na galerie per item */
+  images?: string[];
   items: BeltItem[];
 };
 
-type CatalogResponse = { categories: ApiCategory[] };
+export type CatalogResponse = { categories: ApiCategory[] };
 
-type Lang = "pl" | "en";
+export type Lang = "pl" | "en";
 
 /* ===== UI teksty ===== */
 const UI_STRINGS: Record<
@@ -56,6 +66,7 @@ const UI_STRINGS: Record<
     beltNoPlaceholder: string;
     submit: string;
     price: string;
+    mainSize: string;
     about: string;
     loading: string;
     empty: string;
@@ -77,6 +88,7 @@ const UI_STRINGS: Record<
     beltNoPlaceholder: "Nr paska",
     submit: "Wyślij zapytanie",
     price: "Cena:",
+    mainSize: "Rozmiar główny",
     about:
       "Każdy pasek powstaje w całości ręcznie – od doboru skóry, przez cięcie i barwienie, po wykończenie krawędzi. Wierzymy w rzemiosło, które ma duszę: staranność detalu i ponadczasowy charakter. Nasze paski łączą tradycję z nowoczesną precyzją — projektowane z myślą o trwałości i pięknie, które dojrzewa z czasem.",
     loading: "Ładowanie katalogu…",
@@ -98,6 +110,7 @@ const UI_STRINGS: Record<
     beltNoPlaceholder: "Belt no.",
     submit: "Send request",
     price: "Price:",
+    mainSize: "Main size",
     about:
       "Each belt is crafted entirely by hand — from leather selection and cutting to dyeing and edge finishing. We believe in soul-filled craftsmanship: meticulous detail and timeless character. Our belts blend tradition with modern precision, designed for durability and beauty that matures over time.",
     loading: "Loading catalog…",
@@ -105,13 +118,13 @@ const UI_STRINGS: Record<
   },
 };
 
-type LuxuryLandingProps = {
+export type LuxuryLandingProps = {
   logo?: string;
   aboutImage?: string;
   defaultLang?: Lang;
 };
 
-type Labels = (typeof UI_STRINGS)["pl"];
+export type Labels = (typeof UI_STRINGS)["pl"];
 
 function formatPriceForLang(price: string | number | undefined, lang: Lang) {
   if (price == null) return "—";
@@ -164,34 +177,30 @@ function CategorySection({
 
   // Stałe UI
   const VISIBLE = 4;
-  const THUMB_H = 96;
+  const THUMB_H = 96; // większe miniatury
   const GAP = 12;
   const ySpring = useSpring(0, { stiffness: 120, damping: 20 });
 
-  // 2) LOGIKA DANYCH (może być warunkowa, ale bez wpływu na hooki)
-  const count = Math.min(images.length, items.length);
-  const displayImages = images.slice(0, count);
-  const displayItems = items.slice(0, count);
-  const belt = displayItems[active];
+  // 2) LOGIKA DANYCH – galeria bierze zdjęcia z wybranego PASKA, a gdy ich brak, spada do zdjęć KATEGORII
+  const belt = items[active];
+  const gallery = (belt?.images?.length ? belt.images : images) ?? [];
 
   // Utrzymanie widoczności aktywnej miniatury
   useEffect(() => {
-    if (count === 0) return;
+    if (!gallery.length) return;
     if (active < scrollIndex) setScrollIndex(active);
-    if (active > scrollIndex + VISIBLE - 1)
-      setScrollIndex(active - (VISIBLE - 1));
+    if (active > scrollIndex + VISIBLE - 1) setScrollIndex(active - (VISIBLE - 1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, count]);
+  }, [active, gallery.length]);
 
   // Aktualizacja sprężyny przesuwu listy miniaturek
   useEffect(() => {
-    if (count === 0) return;
+    if (!gallery.length) return;
     ySpring.set(-(scrollIndex * (THUMB_H + GAP)));
-  }, [count, scrollIndex, ySpring]);
+  }, [gallery.length, scrollIndex, ySpring]);
 
   // Swipe (mobile)
-  const onTouchStart = (e: React.TouchEvent) =>
-    setTouchStartX(e.touches[0].clientX);
+  const onTouchStart = (e: React.TouchEvent) => setTouchStartX(e.touches[0].clientX);
   const onTouchEnd = (e: React.TouchEvent) => {
     if (touchStartX === null) return;
     const dx = e.changedTouches[0].clientX - touchStartX;
@@ -199,27 +208,29 @@ function CategorySection({
     if (Math.abs(dx) > THRESHOLD) {
       setActive((prev) => {
         const next = prev + (dx < 0 ? 1 : -1);
-        return Math.max(0, Math.min(displayImages.length - 1, next));
+        return Math.max(0, Math.min(items.length - 1, next));
       });
     }
     setTouchStartX(null);
   };
 
   // Scroll przyciski (miniatury / desktop)
-  const maxScrollIndex = Math.max(0, displayImages.length - VISIBLE);
+  const maxScrollIndex = Math.max(0, gallery.length - VISIBLE);
   const scrollUp = () => setScrollIndex((s) => Math.max(0, s - 1));
   const scrollDown = () => setScrollIndex((s) => Math.min(maxScrollIndex, s + 1));
 
   // Po hookach można bezpiecznie warunkowo nie renderować
-  if (count === 0) return null;
+  if (!items.length || !gallery.length) return null;
+
+  // EN fallback: jeśli API daje tłumaczenia, pokaż je w wersji EN
+  const displayName = lang === "en" && belt?.nameEn ? belt.nameEn : belt?.name;
+  const displayDesc = lang === "en" && belt?.descriptionEn ? belt.descriptionEn : belt?.description;
 
   return (
     <div>
       {/* Tytuł kategorii */}
       <div className="mb-6 text-center">
-        <h1 className="font-serif text-2xl md:text-3xl tracking-wide">
-          Craft Symphony - {title}
-        </h1>
+        <h1 className="font-serif text-2xl md:text-3xl tracking-wide">Craft Symphony - {title}</h1>
       </div>
 
       {/* HERO */}
@@ -227,7 +238,7 @@ function CategorySection({
         <div className="relative aspect-[4/3] md:aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm border border-neutral-200">
           <AnimatePresence mode="wait">
             <motion.div
-              key={`hero-${title}-${active}`}
+              key={`hero-${title}-${active}-${gallery[0]}`}
               initial={{ opacity: 0, scale: 1.02 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
@@ -237,8 +248,8 @@ function CategorySection({
               onTouchEnd={onTouchEnd}
             >
               <Image
-                src={displayImages[active]}
-                alt={`${labels.heroAltPrefix} ${belt?.name ?? `${active + 1}`}`}
+                src={gallery[0]}
+                alt={`${labels.heroAltPrefix} ${displayName ?? `${active + 1}`}`}
                 fill
                 sizes="100vw"
                 className="object-cover"
@@ -248,7 +259,7 @@ function CategorySection({
           </AnimatePresence>
 
           {/* MINIATURY (DESKTOP) */}
-          {displayImages.length > 1 && (
+          {gallery.length > 1 && (
             <div className="hidden md:flex absolute inset-y-0 right-4 my-4 flex-col items-center justify-center gap-3 select-none">
               <div className="absolute inset-y-0 -inset-x-2 rounded-2xl bg-black/35 backdrop-blur-sm border border-white/20" />
 
@@ -261,30 +272,26 @@ function CategorySection({
               </button>
 
               <div className="relative h-[calc(4*96px+3*12px)] w-28 overflow-hidden rounded-xl border border-white/20 bg-transparent">
-                <motion.div
-                  style={{ y: ySpring }}
-                  className="absolute top-0 left-0 w-full"
-                >
+                <motion.div style={{ y: ySpring }} className="absolute top-0 left-0 w-full">
                   <div className="flex flex-col gap-3 p-0">
-                    {displayImages.map((src, i) => (
+                    {gallery.map((src, i) => (
                       <button
                         key={i}
-                        onClick={() => setActive(i)}
+                        onClick={() => {
+                          // klik miniatury zmienia zdjęcie w hero (na 1. po kliknięciu zamieniamy kolejność)
+                          const reordered = [src, ...gallery.filter((_, j) => j !== i)];
+                          // hack: prosta rotacja – zamiana pierwszego z i-tym poprzez lokalny side-effect
+                          // w produkcji lepiej trzymać indeks aktywnego zdjęcia w stanie
+                          (belt.images && belt.images.length) && (belt.images = reordered);
+                        }}
                         className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${
-                          i === active
-                            ? "border-neutral-900 shadow"
-                            : "border-neutral-300 hover:border-neutral-500"
+                          i === 0 ? "border-neutral-900 shadow" : "border-neutral-300 hover:border-neutral-500"
                         }`}
                         aria-label={`${labels.selectBelt} ${i + 1}`}
+                        title={`Podgląd ${i + 1}`}
                       >
                         <div className="relative h-24 w-full">
-                          <Image
-                            src={src}
-                            alt={`thumb-${i + 1}`}
-                            fill
-                            sizes="112px"
-                            className="object-cover rounded-lg"
-                          />
+                          <Image src={src} alt={`thumb-${i + 1}`} fill sizes="112px" className="object-cover rounded-lg" />
                         </div>
                       </button>
                     ))}
@@ -305,28 +312,23 @@ function CategorySection({
       </div>
 
       {/* MINIATURY (MOBILE) */}
-      {displayImages.length > 1 && (
+      {gallery.length > 1 && (
         <div className="md:hidden mt-3">
           <div className="flex gap-3 overflow-x-auto px-1 py-1 snap-x snap-mandatory">
-            {displayImages.map((src, i) => (
+            {gallery.map((src, i) => (
               <button
                 key={`m-thumb-${i}`}
-                onClick={() => setActive(i)}
+                onClick={() => {
+                  const reordered = [src, ...gallery.filter((_, j) => j !== i)];
+                  (belt.images && belt.images.length) && (belt.images = reordered);
+                }}
                 className={`relative h-20 w-20 flex-none overflow-hidden rounded-lg border snap-start ${
-                  i === active
-                    ? "border-neutral-900 ring-2 ring-neutral-900"
-                    : "border-neutral-300 hover:border-neutral-500"
+                  i === 0 ? "border-neutral-900 ring-2 ring-neutral-900" : "border-neutral-300 hover:border-neutral-500"
                 }`}
                 aria-label={`${labels.selectBelt} ${i + 1}`}
               >
                 <div className="relative h-20 w-20">
-                  <Image
-                    src={src}
-                    alt={`thumb-${i + 1}`}
-                    fill
-                    sizes="80px"
-                    className="object-cover rounded-lg"
-                  />
+                  <Image src={src} alt={`thumb-${i + 1}`} fill sizes="80px" className="object-cover rounded-lg" />
                 </div>
               </button>
             ))}
@@ -338,14 +340,14 @@ function CategorySection({
       <div className="mt-6 md:mt-8 text-center">
         <div className="text-center mb-3">
           <h3 className="font-serif text-base sm:text-lg tracking-wide">
-            {labels.numberLabel}&nbsp;{active + 1}&nbsp;{belt?.name ?? "—"}
+            {labels.numberLabel}&nbsp;{active + 1}&nbsp;{displayName ?? "—"}
           </h3>
-          <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">
-            {belt?.description ?? "—"}
-          </p>
+          <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">{displayDesc ?? "—"}</p>
         </div>
 
+        {/* ROZMIARY wokół schematu jak wcześniej: góra/dół + main po prawej od belt.png */}
         <div className="max-w-4xl mx-auto">
+          {/* GÓRA */}
           <div className="text-center text-sm text-neutral-600 mb-[-48px]">
             {belt?.upperSize ?? "—"}
           </div>
@@ -360,9 +362,17 @@ function CategorySection({
                 className="object-contain"
                 priority={false}
               />
+
+              {/* MAIN SIZE BUBBLE — z prawej strony obrazka */}
+              <div className="hidden md:block absolute top-1/2 -translate-y-1/2 right-0 translate-x-[110%]">
+                <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/95 px-4 py-3 text-base font-medium shadow-sm min-w-[8rem] justify-center">
+                  {typeof belt?.mainSize !== "undefined" && belt?.mainSize !== null ? `${belt.mainSize}` : "—"}
+                </div>
+              </div>
             </div>
           </div>
 
+          {/* DÓŁ */}
           <div className="text-center text-sm text-neutral-600 mt-[-48px]">
             {belt?.lowerSize ?? "—"}
           </div>
@@ -370,14 +380,13 @@ function CategorySection({
 
         <p className="mt-8 text-center text-[13px] text-neutral-600 mb-16 italic">
           {labels.price}{" "}
-          <span className="font-medium tracking-wide">
-            {formatPriceForLang(belt?.price, lang)}
-          </span>
+          <span className="font-medium tracking-wide">{formatPriceForLang(belt?.price as any, lang)}</span>
         </p>
       </div>
     </div>
   );
 }
+
 
 /* ===== Główny komponent – TYLKO dane z bazy ===== */
 export default function LuxuryLanding({
@@ -394,16 +403,14 @@ export default function LuxuryLanding({
   // persist + lang attr
   useEffect(() => {
     const saved =
-      typeof window !== "undefined"
-        ? ((localStorage.getItem("cs_lang") as Lang | null) || null)
-        : null;
+      typeof window !== "undefined" ? ((localStorage.getItem("cs_lang") as Lang | null) || null) : null;
     if (saved) setLang(saved);
   }, []);
 
   useEffect(() => {
     // useEffect i tak nie działa na serwerze – nie trzeba warunkować wywołania hooka
-    localStorage?.setItem?.("cs_lang", lang);
     try {
+      localStorage?.setItem?.("cs_lang", lang);
       document.documentElement.lang = lang;
     } catch {
       // ignore
@@ -430,6 +437,12 @@ export default function LuxuryLanding({
     };
   }, []);
 
+  const hasRenderable = (c: ApiCategory) => {
+    const anyWithImages = (c.items || []).some((it) => (it.images?.length || 0) > 0);
+    const categoryImages = (c.images?.length || 0) > 0;
+    return (c.items?.length || 0) > 0 && (anyWithImages || categoryImages);
+  };
+
   return (
     <div className="min-h-screen bg-[#f5f5ef] text-neutral-900 selection:bg-neutral-900 selection:text-white">
       {/* NAVBAR */}
@@ -454,14 +467,7 @@ export default function LuxuryLanding({
                 </Link>
 
                 <div className="relative h-14 w-14 md:h-20 md:w-20 shrink-0">
-                  <Image
-                    src={logo}
-                    alt="Craft Symphony"
-                    fill
-                    sizes="80px"
-                    className="object-contain"
-                    priority={false}
-                  />
+                  <Image src={logo} alt="Craft Symphony" fill sizes="80px" className="object-contain" priority={false} />
                 </div>
 
                 <Link
@@ -490,14 +496,7 @@ export default function LuxuryLanding({
               focus:outline-none focus:ring-2 focus:ring-[#f5f5ef]
               ${lang === "pl" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
                 >
-                  <Image
-                    src="/images/poland.png"
-                    alt=""
-                    width={20}
-                    height={14}
-                    className="rounded-[2px] shadow-sm"
-                    priority={false}
-                  />
+                  <Image src="/images/poland.png" alt="" width={20} height={14} className="rounded-[2px] shadow-sm" priority={false} />
                   <span className="sr-only">PL</span>
                 </button>
 
@@ -511,14 +510,7 @@ export default function LuxuryLanding({
               focus:outline-none focus:ring-2 focus:ring-[#f5f5ef]
               ${lang === "en" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
                 >
-                  <Image
-                    src="/images/england.png"
-                    alt=""
-                    width={20}
-                    height={14}
-                    className="rounded-[2px] shadow-sm"
-                    priority={false}
-                  />
+                  <Image src="/images/england.png" alt="" width={20} height={14} className="rounded-[2px] shadow-sm" priority={false} />
                   <span className="sr-only">EN</span>
                 </button>
               </div>
@@ -531,64 +523,35 @@ export default function LuxuryLanding({
       <main className="pt-20 md:pt-24 pb-24">
         <section className="mx-auto max-w-6xl px-4 space-y-16 md:space-y-24">
           {/* LOADING */}
-          {loading && (
-            <div className="text-center text-sm text-neutral-600">{t.loading}</div>
-          )}
+          {loading && <div className="text-center text-sm text-neutral-600">{t.loading}</div>}
 
           {/* CATEGORIES FROM DB */}
-          {!loading &&
-            data &&
-            data
-              .filter((c) => (c.images?.length || 0) > 0 && (c.items?.length || 0) > 0)
-              .map((cat) => (
-                <div key={cat.slug}>
-                  <CategorySection
-                    title={cat.title}
-                    images={cat.images}
-                    items={cat.items}
-                    labels={t}
-                    lang={lang}
-                  />
-                  <div className="mx-auto w-[100%] h-px bg-neutral-300" />
-                </div>
-              ))}
+          {!loading && data && data.filter(hasRenderable).map((cat) => (
+            <div key={cat.slug}>
+              <CategorySection title={cat.title} images={cat.images} items={cat.items} labels={t} lang={lang} />
+              <div className="mx-auto w-[100%] h-px bg-neutral-300" />
+            </div>
+          ))}
 
           {/* EMPTY STATE */}
-          {!loading &&
-            (data?.filter(
-              (c) => (c.images?.length || 0) > 0 && (c.items?.length || 0) > 0
-            ).length ?? 0) === 0 && (
-              <div className="text-center text-sm text-neutral-600">{t.empty}</div>
-            )}
+          {!loading && (data?.filter(hasRenderable).length ?? 0) === 0 && (
+            <div className="text-center text-sm text-neutral-600">{t.empty}</div>
+          )}
 
           {/* O rzemiośle */}
           <div className="mt-4 md:mt-6 text-center">
-            <p className="mt-4 md:mt-6 max-w-3xl mx-auto text-sm leading-relaxed text-neutral-700 px-2 italic">
-              {t.about}
-            </p>
+            <p className="mt-4 md:mt-6 max-w-3xl mx-auto text-sm leading-relaxed text-neutral-700 px-2 italic">{t.about}</p>
             <div className="relative mx-auto h-64 md:h-[31rem] w-full max-w-3xl">
-              <Image
-                src={aboutImage}
-                alt="Craft"
-                fill
-                sizes="(max-width:768px) 90vw, 60vw"
-                className="object-contain"
-                priority={false}
-              />
+              <Image src={aboutImage} alt="Craft" fill sizes="(max-width:768px) 90vw, 60vw" className="object-contain" priority={false} />
             </div>
           </div>
 
           {/* Formularz */}
           <div className="mt-12 md:mt-16 text-center">
-            <h3 className="font-serif text-lg md:text-xl tracking-wide">
-              {t.interestedHeading}
-            </h3>
+            <h3 className="font-serif text-lg md:text-xl tracking-wide">{t.interestedHeading}</h3>
             <p className="mt-2 text-sm text-neutral-600 px-2">{t.interestedText}</p>
 
-            <form
-              onSubmit={(e) => e.preventDefault()}
-              className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
-            >
+            <form onSubmit={(e) => e.preventDefault()} className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2">
               <input
                 type="email"
                 required
