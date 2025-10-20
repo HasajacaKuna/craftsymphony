@@ -174,6 +174,7 @@ function CategorySection({
   const [active, setActive] = useState(0);
   const [scrollIndex, setScrollIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [heroIndex, setHeroIndex] = useState(0);
 
   // Stałe UI
   const VISIBLE = 4;
@@ -198,6 +199,11 @@ function CategorySection({
     if (!gallery.length) return;
     ySpring.set(-(scrollIndex * (THUMB_H + GAP)));
   }, [gallery.length, scrollIndex, ySpring]);
+
+  // Resetuj hero obraz po zmianie paska
+  useEffect(() => {
+    setHeroIndex(0);
+  }, [active]);
 
   // Swipe (mobile)
   const onTouchStart = (e: React.TouchEvent) => setTouchStartX(e.touches[0].clientX);
@@ -238,7 +244,7 @@ function CategorySection({
         <div className="relative aspect-[4/3] md:aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm border border-neutral-200">
           <AnimatePresence mode="wait">
             <motion.div
-              key={`hero-${title}-${active}-${gallery[0]}`}
+              key={`hero-${title}-${active}-${gallery[heroIndex] ?? gallery[0]}`}
               initial={{ opacity: 0, scale: 1.02 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
@@ -248,7 +254,7 @@ function CategorySection({
               onTouchEnd={onTouchEnd}
             >
               <Image
-                src={gallery[0]}
+                src={gallery[heroIndex] ?? gallery[0]}
                 alt={`${labels.heroAltPrefix} ${displayName ?? `${active + 1}`}`}
                 fill
                 sizes="100vw"
@@ -277,15 +283,9 @@ function CategorySection({
                     {gallery.map((src, i) => (
                       <button
                         key={i}
-                        onClick={() => {
-                          // klik miniatury zmienia zdjęcie w hero (na 1. po kliknięciu zamieniamy kolejność)
-                          const reordered = [src, ...gallery.filter((_, j) => j !== i)];
-                          // hack: prosta rotacja – zamiana pierwszego z i-tym poprzez lokalny side-effect
-                          // w produkcji lepiej trzymać indeks aktywnego zdjęcia w stanie
-                          (belt.images && belt.images.length) && (belt.images = reordered);
-                        }}
+                        onClick={() => setHeroIndex(i)}
                         className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${
-                          i === 0 ? "border-neutral-900 shadow" : "border-neutral-300 hover:border-neutral-500"
+                          i === heroIndex ? "border-neutral-900 shadow" : "border-neutral-300 hover:border-neutral-500"
                         }`}
                         aria-label={`${labels.selectBelt} ${i + 1}`}
                         title={`Podgląd ${i + 1}`}
@@ -318,12 +318,9 @@ function CategorySection({
             {gallery.map((src, i) => (
               <button
                 key={`m-thumb-${i}`}
-                onClick={() => {
-                  const reordered = [src, ...gallery.filter((_, j) => j !== i)];
-                  (belt.images && belt.images.length) && (belt.images = reordered);
-                }}
+                onClick={() => setHeroIndex(i)}
                 className={`relative h-20 w-20 flex-none overflow-hidden rounded-lg border snap-start ${
-                  i === 0 ? "border-neutral-900 ring-2 ring-neutral-900" : "border-neutral-300 hover:border-neutral-500"
+                  i === heroIndex ? "border-neutral-900 ring-2 ring-neutral-900" : "border-neutral-300 hover:border-neutral-500"
                 }`}
                 aria-label={`${labels.selectBelt} ${i + 1}`}
               >
@@ -380,7 +377,7 @@ function CategorySection({
 
         <p className="mt-8 text-center text-[13px] text-neutral-600 mb-16 italic">
           {labels.price}{" "}
-          <span className="font-medium tracking-wide">{formatPriceForLang(belt?.price as any, lang)}</span>
+          <span className="font-medium tracking-wide">{formatPriceForLang(belt?.price, lang)}</span>
         </p>
       </div>
     </div>
@@ -472,7 +469,7 @@ export default function LuxuryLanding({
 
                 <Link
                   href="/"
-                  className="relative text-[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
+                  className="relative text:[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
                        hover:text-neutral-950 transition
                        after:absolute after:right-0 after:-bottom-1 after:h-[1px] after:w-0
                        after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full
