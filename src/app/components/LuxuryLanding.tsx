@@ -16,17 +16,14 @@ import Image from "next/image";
 export type BeltItem = {
   name: string;
   description: string;
-  /** opcjonalnie, jeśli API zwraca od razu EN */
   nameEn?: string;
   descriptionEn?: string;
-  /** cena może przyjść jako number (PLN) lub string (np. "1 190 PLN") */
   price: string | number;
   upperSize: string;
   lowerSize: string;
-  /** NOWE: galeria zdjęć per pasek */
   images?: string[];
-  /** NOWE: rozmiar główny */
   mainSize?: string | number;
+  beltNo?: number;              // ⬅️ DODANE
 };
 
 export type CategoryData = {
@@ -253,9 +250,9 @@ function CategorySection({
               onTouchStart={onTouchStart}
               onTouchEnd={onTouchEnd}
             >
-              <Image
-                src={gallery[heroIndex] ?? gallery[0]}
-                alt={`${labels.heroAltPrefix} ${displayName ?? `${active + 1}`}`}
+<Image
+  src={gallery[heroIndex] ?? gallery[0]}
+  alt={`${labels.heroAltPrefix} ${belt?.beltNo ?? (displayName ?? `${active + 1}`)}`}
                 fill
                 sizes="100vw"
                 className="object-cover"
@@ -336,9 +333,10 @@ function CategorySection({
       {/* OPIS + ROZMIARÓWKA */}
       <div className="mt-6 md:mt-8 text-center">
         <div className="text-center mb-3">
-          <h3 className="font-serif text-base sm:text-lg tracking-wide">
-            {labels.numberLabel}&nbsp;{active + 1}&nbsp;{displayName ?? "—"}
-          </h3>
+<h3 className="font-serif text-base sm:text-lg tracking-wide">
+  {labels.numberLabel}&nbsp;{belt?.beltNo ?? active + 1}&nbsp;{displayName ?? "—"}
+</h3>
+
           <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">{displayDesc ?? "—"}</p>
         </div>
 
@@ -414,25 +412,44 @@ export default function LuxuryLanding({
     }
   }, [lang]);
 
-  // fetch katalogu z backendu
-  useEffect(() => {
-    let abort = false;
-    (async () => {
-      try {
-        setLoading(true);
-        const res = await fetch("/api/catalog", { cache: "no-store" });
-        const json: CatalogResponse = await res.json();
-        if (!abort) setData(json.categories || []);
-      } catch {
-        if (!abort) setData([]);
-      } finally {
-        if (!abort) setLoading(false);
-      }
-    })();
-    return () => {
-      abort = true;
-    };
-  }, []);
+useEffect(() => {
+  let abort = false;
+  (async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/catalog", { cache: "no-store" });
+      const json: CatalogResponse = await res.json();
+
+      // 🔧 NORMALIZACJA: wypełnij mainSize i beltNo, jeśli przychodzą pod starą nazwą
+      const normalized: ApiCategory[] =
+        (json?.categories ?? []).map((cat) => ({
+          ...cat,
+          items: (cat.items ?? []).map((it) => {
+            // @ts-expect-error – pozwalamy na chwilowe czytanie pól spoza typu (stary shape)
+            const legacyMain = it.rozmiarGlowny;
+            // @ts-expect-error
+            const legacyNo = it.numerPaska;
+
+            return {
+              ...it,
+              mainSize: it.mainSize ?? (legacyMain != null ? `${legacyMain} cm` : undefined),
+              beltNo: it.beltNo ?? (typeof legacyNo === "number" ? legacyNo : undefined),
+            } as BeltItem;
+          }),
+        }));
+
+      if (!abort) setData(normalized);
+    } catch {
+      if (!abort) setData([]);
+    } finally {
+      if (!abort) setLoading(false);
+    }
+  })();
+  return () => {
+    abort = true;
+  };
+}, []);
+
 
   const hasRenderable = (c: ApiCategory) => {
     const anyWithImages = (c.items || []).some((it) => (it.images?.length || 0) > 0);
