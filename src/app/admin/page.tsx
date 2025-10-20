@@ -22,8 +22,14 @@ async function readJSON<T = unknown>(res: Response): Promise<T | null | { raw: s
 
   if (!res.ok) {
     try {
-      const parsed = text ? JSON.parse(text) : null;
-      const msg = (parsed && ((parsed as any).error || (parsed as any).message)) || text || `HTTP ${res.status}`;
+      const parsed: unknown = text ? JSON.parse(text) : null;
+      let msg = text || `HTTP ${res.status}`;
+      if (parsed && typeof parsed === "object") {
+        const p = parsed as { error?: unknown; message?: unknown };
+        const errMsg = typeof p.error === "string" ? p.error : undefined;
+        const msgMsg = typeof p.message === "string" ? p.message : undefined;
+        msg = errMsg ?? msgMsg ?? msg;
+      }
       throw new Error(msg);
     } catch {
       throw new Error(text || `HTTP ${res.status}`);
@@ -52,9 +58,11 @@ type Lang = "pl" | "en";
 
 type Category = { _id: string; name: string; slug: string; order?: number };
 
+type CategoryRef = { _id: string; name: string; slug: string };
+
 type Item = {
   _id: string;
-  categoryId: { _id: string; name: string; slug: string } | string;
+  categoryId: CategoryRef | string;
   title: string;
   description: string;
   titleEn?: string;
@@ -76,6 +84,11 @@ type BeltItem = {
   mainSize?: string | number;
   image?: string; // JEDNO zdjęcie
 };
+
+// Type guard for populated category
+function isCatObj(x: Item["categoryId"]): x is CategoryRef {
+  return typeof x === "object" && x !== null && "_id" in x && typeof (x as CategoryRef)._id === "string";
+}
 
 const UI_STRINGS: Record<
   Lang,
@@ -146,8 +159,6 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
   const [scrollIndex, setScrollIndex] = useState(0);
   const t = UI_STRINGS[lang];
 
-  if (!belts.length) return null; // po hookach — OK
-
   const hero = belts[active];
   const thumbs = belts.map((b) => b.image || "");
 
@@ -166,6 +177,11 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
   const maxScrollIndex = Math.max(0, thumbs.length - VISIBLE);
   const scrollUp = () => setScrollIndex((s) => Math.max(0, s - 1));
   const scrollDown = () => setScrollIndex((s) => Math.min(maxScrollIndex, s + 1));
+
+  // Guard PO wszystkich hookach
+  if (!belts.length) {
+    return null;
+  }
 
   return (
     <div>
@@ -354,7 +370,7 @@ export default function AdminPage() {
   const authedJSON = async <T = unknown>(input: RequestInfo | URL, init?: RequestInit): Promise<T | null | { raw: string }> => {
     const res = await authedFetch(input, init);
     return readJSON<T>(res);
-    };
+  };
 
   const tryAuth = async () => {
     try {
@@ -506,8 +522,7 @@ export default function AdminPage() {
     if (!upData || typeof upData !== "object" || !("path" in upData)) {
       throw new Error("Błędna odpowiedź z uploadu");
     }
-    const path = (upData as { path: string }).path;
-    return path;
+    return (upData as { path: string }).path;
   };
 
   /* ===== items: create / edit / delete ===== */
@@ -651,7 +666,11 @@ export default function AdminPage() {
     const sortedCats = [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return sortedCats.map((c) => {
       const its = items
-        .filter((i) => (typeof i.categoryId === "string" ? i.categoryId : (i.categoryId as any)?._id) === c._id)
+        .filter((i) => {
+          const cat = i.categoryId;
+          const id = typeof cat === "string" ? cat : isCatObj(cat) ? cat._id : "";
+          return id === c._id;
+        })
         .sort((a, b) => (a.numerPaska ?? 0) - (b.numerPaska ?? 0));
 
       const belts: BeltItem[] = its.map((i) => {
@@ -868,7 +887,11 @@ export default function AdminPage() {
           <div className="mt-4 space-y-8">
             {sortedCats.map((c) => {
               const its = items
-                .filter((i) => (typeof i.categoryId === "string" ? i.categoryId : (i.categoryId as any)?._id) === c._id)
+                .filter((i) => {
+                  const cat = i.categoryId;
+                  const id = typeof cat === "string" ? cat : isCatObj(cat) ? cat._id : "";
+                  return id === c._id;
+                })
                 .sort((a, b) => (a.numerPaska ?? 0) - (b.numerPaska ?? 0));
               return (
                 <div key={c._id}>
@@ -880,6 +903,7 @@ export default function AdminPage() {
                     {its.map((it) => {
                       const editing = editItem[it._id];
                       const hero = editing?.newPreview || editing?.imagePath || it.imagePath || "/images/placeholder.png";
+                      const catName = typeof it.categoryId === "string" ? it.categoryId : isCatObj(it.categoryId) ? it.categoryId.name : "";
                       return (
                         <div key={it._id} className="rounded-2xl p-3 flex flex-col gap-3 bg-white border">
                           <div className="relative w-full aspect-[4/3]">
@@ -889,7 +913,7 @@ export default function AdminPage() {
                           {!editing ? (
                             <div className="flex-1 text-sm">
                               <div className="font-medium text-base">{it.title}</div>
-                              <div className="text-neutral-600">Kategoria: {typeof it.categoryId === "string" ? it.categoryId : (it.categoryId as any)?.name}</div>
+                              <div className="text-neutral-600">Kategoria: {catName}</div>
                               <div className="text-neutral-600">Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm</div>
                               {typeof it.rozmiarGlowny === "number" && (
                                 <div className="text-neutral-600">Rozmiar główny: {it.rozmiarGlowny} cm</div>
@@ -908,8 +932,8 @@ export default function AdminPage() {
                           ) : (
                             <div className="flex-1 grid grid-cols-1 gap-2 text-sm">
                               <select value={editing.categoryId} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], categoryId: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2">
-                                {sortedCats.map((c) => (
-                                  <option key={c._id} value={c._id}>{c.name}</option>
+                                {sortedCats.map((sc) => (
+                                  <option key={sc._id} value={sc._id}>{sc.name}</option>
                                 ))}
                               </select>
                               <input value={editing.title} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], title: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Tytuł (PL)" />
