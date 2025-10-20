@@ -2,8 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useSpring } from "framer-motion";
-import { ChevronUp, ChevronDown, Pencil, Save, X, Trash2 } from "lucide-react";
-
+import { Pencil, Save, X, Trash2, Plus, Image as ImageIcon, Languages,ChevronUp, ChevronDown } from "lucide-react";
 /* ========= helpers ========= */
 const API_HEADERS = (pwd: string) => ({ "x-admin-password": pwd });
 function errToString(e: unknown): string {
@@ -15,6 +14,8 @@ function errToString(e: unknown): string {
   }
 }
 
+
+
 /* bezpieczne czytanie JSON z Response */
 async function readJSON<T = unknown>(
   res: Response
@@ -23,7 +24,6 @@ async function readJSON<T = unknown>(
   const text = await res.text().catch(() => "");
 
   if (!res.ok) {
-    // spróbuj wyciągnąć message/error z JSON, a jak nie — zwróć tekst/status
     try {
       const parsed = text ? JSON.parse(text) : null;
       const msg =
@@ -57,16 +57,20 @@ async function readJSON<T = unknown>(
 type Lang = "pl" | "en";
 
 type Category = { _id: string; name: string; slug: string; order?: number };
+
 type Item = {
   _id: string;
   categoryId: { _id: string; name: string; slug: string } | string;
   title: string;
   description: string;
+  titleEn?: string;
+  descriptionEn?: string;
   rozmiarMin: number;
   rozmiarMax: number;
+  rozmiarGlowny?: number | null;
   cenaPLN: number;
   numerPaska: number;
-  imagePath: string;
+  imagePath?: string; // JEDNO zdjęcie
 };
 
 type BeltItem = {
@@ -75,47 +79,49 @@ type BeltItem = {
   price: string | number;
   upperSize: string;
   lowerSize: string;
+  mainSize?: string | number;
+  image?: string; // JEDNO zdjęcie
 };
 
-const UI_STRINGS: Record<
-  Lang,
-  {
-    preview: string;
-    numberLabel: string;
-    selectBelt: string;
-    scrollUp: string;
-    scrollDown: string;
-    heroAltPrefix: string;
-    schemaAlt: string;
-    price: string;
-  }
-> = {
+const UI_STRINGS: Record<Lang, {
+  preview: string;
+  numberLabel: string;
+  heroAltPrefix: string;
+  schemaAlt: string;
+  price: string;
+  mainSize: string;
+  // DODANE:
+  scrollUp: string;
+  scrollDown: string;
+}> = {
   pl: {
     preview: "Podgląd (jak na stronie głównej)",
     numberLabel: "Nr.",
-    selectBelt: "Wybierz pasek nr",
-    scrollUp: "Przewiń w górę",
-    scrollDown: "Przewiń w dół",
     heroAltPrefix: "Pasek",
     schemaAlt: "Schemat paska – rozmiar",
     price: "Cena:",
+    mainSize: "Rozmiar główny",
+    // DODANE:
+    scrollUp: "Przewiń w górę",
+    scrollDown: "Przewiń w dół",
   },
   en: {
     preview: "Preview (like the homepage)",
     numberLabel: "No.",
-    selectBelt: "Select belt no.",
-    scrollUp: "Scroll up",
-    scrollDown: "Scroll down",
     heroAltPrefix: "Belt",
     schemaAlt: "Belt diagram — size",
     price: "Price:",
+    mainSize: "Main size",
+    // DODANE:
+    scrollUp: "Scroll up",
+    scrollDown: "Scroll down",
   },
 };
+
 
 /* ========= price formatting (PL → PLN / EN → USD=PLN/4) ========= */
 function formatPriceForLang(price: string | number | undefined, lang: Lang) {
   if (price == null) return "—";
-
   if (typeof price === "number") {
     if (lang === "pl") return `${price.toLocaleString("pl-PL")} PLN`;
     const usd = price / 4;
@@ -125,12 +131,9 @@ function formatPriceForLang(price: string | number | undefined, lang: Lang) {
       maximumFractionDigits: 2,
     }).format(usd);
   }
-
   if (lang === "pl") return price;
-
   const numericPLN = Number(String(price).replace(/[^\d.,]/g, "").replace(/\s/g, "").replace(",", "."));
   if (!isFinite(numericPLN)) return price;
-
   const usd = numericPLN / 4;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -139,94 +142,94 @@ function formatPriceForLang(price: string | number | undefined, lang: Lang) {
   }).format(usd);
 }
 
-/* ========= mini komponent podglądu kategorii (jak na froncie) ========= */
+/* ========= PODGLĄD KATEGORII — jedno zdjęcie w hero + miniatury (inne paski) po prawej ========= */
+
+
 function CategoryPreview({
   title,
-  images,
-  items,
+  belts,
   lang,
 }: {
   title: string;
-  images: string[];
-  items: BeltItem[];
+  belts: BeltItem[]; // BeltItem z polem image?: string
   lang: Lang;
 }) {
-  // Hooki zawsze na górze (bez warunków)
   const [active, setActive] = useState(0);
-  const [scrollIndex, setScrollIndex] = useState(0);
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
+  // scroll pionowych miniaturek
   const VISIBLE = 4;
   const THUMB_H = 96;
   const GAP = 12;
   const ySpring = useSpring(0, { stiffness: 120, damping: 20 });
+  const [scrollIndex, setScrollIndex] = useState(0);
 
   const t = UI_STRINGS[lang];
 
-  // Dane do renderu (dopiero po hookach)
-  const count = Math.min(images.length, items.length);
-  const displayImages = images.slice(0, count);
-  const displayItems = items.slice(0, count);
-  const belt = displayItems[active];
+  if (!belts.length) return null;
 
-  useEffect(() => {
-    ySpring.set(-(scrollIndex * (THUMB_H + GAP)));
-  }, [scrollIndex, ySpring]);
+  const hero = belts[active];
+  const thumbs = belts.map((b) => b.image || ""); // inne paski jako miniatury
 
+  // utrzymuj listę przewiniętą tak, by aktywny był w kadrze
   useEffect(() => {
+    if (!thumbs.length) return;
     if (active < scrollIndex) setScrollIndex(active);
     if (active > scrollIndex + VISIBLE - 1) setScrollIndex(active - (VISIBLE - 1));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+  }, [active, thumbs.length, scrollIndex]);
 
-  const onTouchStart = (e: React.TouchEvent) => setTouchStartX(e.touches[0].clientX);
-  const onTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX === null) return;
-    const dx = e.changedTouches[0].clientX - touchStartX;
-    if (Math.abs(dx) > 40) {
-      setActive((p) => Math.max(0, Math.min(displayImages.length - 1, p + (dx < 0 ? 1 : -1))));
-    }
-    setTouchStartX(null);
-  };
+  useEffect(() => {
+    if (!thumbs.length) return;
+    ySpring.set(-(scrollIndex * (THUMB_H + GAP)));
+  }, [scrollIndex, thumbs.length, ySpring]);
 
-  if (count === 0) return null;
-
-  const maxScrollIndex = Math.max(0, displayImages.length - VISIBLE);
+  const maxScrollIndex = Math.max(0, thumbs.length - VISIBLE);
+  const scrollUp = () => setScrollIndex((s) => Math.max(0, s - 1));
+  const scrollDown = () => setScrollIndex((s) => Math.min(maxScrollIndex, s + 1));
 
   return (
     <div>
+      {/* Tytuł kategorii */}
       <div className="mb-6 text-center">
-        <h1 className="font-serif text-2xl md:text-3xl tracking-wide">Craft Symphony - {title}</h1>
+        <h1 className="font-serif text-2xl md:text-3xl tracking-wide">
+          Craft Symphony - {title}
+        </h1>
       </div>
 
+      {/* HERO ze zdjęciem aktywnego paska */}
       <div className="relative">
-        <div className="relative aspect-[4/3] md:aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm">
+        <div className="relative aspect-[4/3] md:aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm border border-neutral-200">
           <AnimatePresence mode="wait">
             <motion.div
-              key={`hero-${title}-${active}`}
+              key={`hero-${title}-${active}-${hero?.image ?? "noimg"}`}
               initial={{ opacity: 0, scale: 1.02 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.5, ease: "easeOut" }}
               className="relative h-full w-full"
-              onTouchStart={onTouchStart}
-              onTouchEnd={onTouchEnd}
             >
-              <Image
-                src={displayImages[active]}
-                alt={`${t.heroAltPrefix} ${belt?.name ?? `${active + 1}`}`}
-                fill
-                sizes="100vw"
-                className="object-cover"
-              />
+              {hero?.image ? (
+                <Image
+                  src={hero.image}
+                  alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`}
+                  fill
+                  sizes="100vw"
+                  className="object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 grid place-items-center text-neutral-500">
+                  Brak zdjęcia
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
 
-          {displayImages.length > 1 && (
+          {/* MINIATURY (po prawej, desktop) */}
+          {thumbs.length > 1 && (
             <div className="hidden md:flex absolute inset-y-0 right-4 my-4 flex-col items-center justify-center gap-3 select-none">
               <div className="absolute inset-y-0 -inset-x-2 rounded-2xl bg-black/35 backdrop-blur-sm border border-white/20" />
+
               <button
-                onClick={() => setScrollIndex((s) => Math.max(0, s - 1))}
+                onClick={scrollUp}
                 className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 hover:bg-black/40 text-white shadow-sm"
                 aria-label={t.scrollUp}
               >
@@ -236,17 +239,32 @@ function CategoryPreview({
               <div className="relative h-[calc(4*96px+3*12px)] w-28 overflow-hidden rounded-xl border border-white/20 bg-transparent">
                 <motion.div style={{ y: ySpring }} className="absolute top-0 left-0 w-full">
                   <div className="flex flex-col gap-3 p-0">
-                    {displayImages.map((src, i) => (
+                    {thumbs.map((src, i) => (
                       <button
                         key={i}
                         onClick={() => setActive(i)}
                         className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${
-                          i === active ? "border-neutral-900 shadow" : "border-neutral-300 hover:border-neutral-500"
+                          i === active
+                            ? "border-neutral-900 shadow"
+                            : "border-neutral-300 hover:border-neutral-500"
                         }`}
-                        aria-label={`${t.selectBelt} ${i + 1}`}
+                        aria-label={`${t.numberLabel} ${i + 1}`}
+                        title={`Pasek ${i + 1}`}
                       >
                         <div className="relative h-24 w-full">
-                          <Image src={src} alt={`thumb-${i + 1}`} fill sizes="112px" className="object-cover rounded-lg" />
+                          {src ? (
+                            <Image
+                              src={src}
+                              alt={`thumb-${i + 1}`}
+                              fill
+                              sizes="112px"
+                              className="object-cover rounded-lg"
+                            />
+                          ) : (
+                            <div className="absolute inset-0 grid place-items-center text-neutral-300 text-xs">
+                              —
+                            </div>
+                          )}
                         </div>
                       </button>
                     ))}
@@ -255,7 +273,7 @@ function CategoryPreview({
               </div>
 
               <button
-                onClick={() => setScrollIndex((s) => Math.min(maxScrollIndex, s + 1))}
+                onClick={scrollDown}
                 className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 hover:bg-black/40 text-white shadow-sm"
                 aria-label={t.scrollDown}
               >
@@ -266,34 +284,76 @@ function CategoryPreview({
         </div>
       </div>
 
+      {/* Selektor paska (guziki 1..N) */}
+      {belts.length > 1 && (
+        <div className="mt-3 flex flex-wrap justify-center gap-2">
+          {belts.map((b, i) => (
+            <button
+              key={i}
+              onClick={() => setActive(i)}
+              className={`px-3 py-1.5 rounded-full border text-sm ${
+                i === active
+                  ? "bg-neutral-900 text-white border-neutral-900"
+                  : "bg-white hover:bg-neutral-50"
+              }`}
+              title={`${t.numberLabel} ${i + 1}`}
+            >
+              {t.numberLabel} {i + 1}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* OPIS + ROZMIARY */}
       <div className="mt-6 md:mt-8 text-center">
         <div className="text-center mb-3">
-<h3 className="font-serif text-base sm:text-lg tracking-wide">
-  {t.numberLabel} {active + 1} {belt?.name ?? "—"}
-</h3>
-          <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">{belt?.description ?? "—"}</p>
+          <h3 className="font-serif text-base sm:text-lg tracking-wide">
+            {t.numberLabel} {active + 1} {hero?.name ?? "—"}
+          </h3>
+          <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">
+            {hero?.description ?? "—"}
+          </p>
         </div>
 
+        {/* Rozmiary wokół schematu */}
         <div className="max-w-4xl mx-auto">
-          <div className="text-center text-sm text-neutral-600 mb-[-48px]">{belt?.upperSize ?? "—"}</div>
+          <div className="text-center text-sm text-neutral-600 mb-[-48px]">
+            {hero?.upperSize ?? "—"}
+          </div>
 
           <div className="rounded-2xl overflow-hidden">
             <div className="relative mx-auto w-2/3 md:w-1/3 aspect-[3/2]">
-              <Image src="/images/belt2.png" alt={t.schemaAlt} fill sizes="(max-width:768px) 66vw, 33vw" className="object-contain" />
+              <Image
+                src="/images/belt2.png"
+                alt={UI_STRINGS[lang].schemaAlt}
+                fill
+                sizes="(max-width:768px) 66vw, 33vw"
+                className="object-contain"
+              />
+              <div className="hidden md:block absolute top-1/2 -translate-y-1/2 right-0 translate-x-[110%]">
+                <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/95 px-4 py-3 text-base font-medium shadow-sm min-w-[8rem] justify-center">
+                  {typeof hero?.mainSize !== "undefined" && hero?.mainSize !== null ? `${hero.mainSize}` : "—"}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="text-center text-sm text-neutral-600 mt-[-48px]">{belt?.lowerSize ?? "—"}</div>
+          <div className="text-center text-sm text-neutral-600 mt-[-48px]">
+            {hero?.lowerSize ?? "—"}
+          </div>
         </div>
 
         <p className="mt-8 text-center text-[13px] text-neutral-600 mb-16 italic">
           {t.price}{" "}
-          <span className="font-medium tracking-wide">{formatPriceForLang(belt?.price, lang)}</span>
+          <span className="font-medium tracking-wide">
+            {formatPriceForLang(hero?.price, lang)}
+          </span>
         </p>
       </div>
     </div>
   );
 }
+
 
 /* ========= główna strona panelu ========= */
 export default function AdminPage() {
@@ -308,22 +368,28 @@ export default function AdminPage() {
 
   // dodawanie kategorii
   const [newCatName, setNewCatName] = useState("");
-  const [newCatSlug, setNewCatSlug] = useState("");
 
   // edycja kategorii
   const [editCat, setEditCat] = useState<Record<string, { name: string; slug: string }>>({});
 
-  // dodawanie itemu
+  // dodawanie itemu (UPROSZCZONY, JEDNO ZDJĘCIE)
   const [form, setForm] = useState({
     categoryId: "",
     title: "",
-    description: "",
+    description:
+      "Pasek ze skóry licowej najlepszej jakości, wycinany, farbiony ręcznie. Brzegi skóry malowane, zabezpieczony lakierem. Stosowane farby są głęboko penetrujące a co za tym idzie, nie złuszczają się, nie pękają, nie farbią ubrań gdy są mokre. Długość paska od klamry do końca 120cm.",
     rozmiarMin: "",
     rozmiarMax: "",
+    rozmiarGlowny: "",
     cenaPLN: "",
     numerPaska: "",
-    file: null as File | null,
+    file: null as File | null,        // JEDEN plik
+    previewUrl: "" as string,         // JEDEN podgląd
   });
+
+  // auto tłumaczenie PL→EN (opcjonalne)
+  const [autoTranslateEN, setAutoTranslateEN] = useState(false);
+  const [enCache, setEnCache] = useState<Record<string, { titleEn: string; descriptionEn: string }>>({});
 
   // edycja itemu
   const [editItem, setEditItem] = useState<
@@ -333,11 +399,16 @@ export default function AdminPage() {
         categoryId: string;
         title: string;
         description: string;
+        titleEn?: string;
+        descriptionEn?: string;
         rozmiarMin: string;
         rozmiarMax: string;
+        rozmiarGlowny: string;
         cenaPLN: string;
         numerPaska: string;
-        file: File | null;
+        imagePath?: string;   // aktualne zdjęcie
+        newFile: File | null; // nowe zdjęcie do podmiany
+        newPreview?: string;
       }
     >
   >({});
@@ -390,8 +461,28 @@ export default function AdminPage() {
 
   const refreshItems = async () => {
     const data = (await authedJSON<Item[]>("/api/admin/items")) ?? [];
-    setItems(Array.isArray(data) ? data : []);
+    const arr = Array.isArray(data) ? data : [];
+    setItems(arr);
   };
+
+  /* ===== translator helper (opcjonalny) ===== */
+  async function translatePLtoEN(text: string): Promise<string> {
+    try {
+      const res = await authedFetch("/api/admin/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, source: "pl", target: "en" }),
+      });
+      const data = await readJSON<{ text: string }>(res);
+      if (data && typeof data === "object" && "text" in data) {
+        // @ts-ignore
+        return data.text as string;
+      }
+      return text;
+    } catch {
+      return text;
+    }
+  }
 
   /* ===== kategorie: create / edit / delete / reorder ===== */
   const submitCategory = async (e: React.FormEvent) => {
@@ -402,10 +493,9 @@ export default function AdminPage() {
       await authedJSON("/api/admin/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newCatName, slug: newCatSlug || undefined }),
+        body: JSON.stringify({ name: newCatName }),
       });
       setNewCatName("");
-      setNewCatSlug("");
       await refreshCats();
       setMsg("Dodano kategorię");
     } catch (e) {
@@ -416,14 +506,12 @@ export default function AdminPage() {
   };
 
   const startEditCat = (c: Category) => setEditCat((s) => ({ ...s, [c._id]: { name: c.name, slug: c.slug } }));
-
   const cancelEditCat = (id: string) =>
     setEditCat((s) => {
       const n = { ...s };
       delete n[id];
       return n;
     });
-
   const saveCat = async (id: string) => {
     const data = editCat[id];
     if (!data) return;
@@ -480,19 +568,31 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order: bOrder }),
       });
-
       await authedJSON(`/api/admin/categories/${b._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order: aOrder }),
       });
-
       await refreshCats();
     } catch (e) {
       setMsg(errToString(e));
     } finally {
       setLoading(false);
     }
+  };
+
+  /* ===== upload helper: jeden plik ===== */
+  const uploadOne = async (file: File): Promise<string> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const upData = (await authedJSON<{ path: string }>("/api/admin/upload", { method: "POST", body: fd })) as
+      | { path: string }
+      | null;
+    if (!upData || typeof upData !== "object" || !("path" in upData)) {
+      throw new Error("Błędna odpowiedź z uploadu");
+    }
+    // @ts-ignore
+    return upData.path as string;
   };
 
   /* ===== items: create / edit / delete ===== */
@@ -503,16 +603,7 @@ export default function AdminPage() {
     try {
       if (!form.file) throw new Error("Dodaj zdjęcie");
 
-      const fd = new FormData();
-      fd.append("file", form.file);
-      const upData = (await authedJSON<{ path: string }>("/api/admin/upload", {
-        method: "POST",
-        body: fd,
-      })) as { path: string } | null;
-
-      if (!upData || typeof upData !== "object" || !("path" in upData)) {
-        throw new Error("Błędna odpowiedź z uploadu");
-      }
+      const uploadedPath = await uploadOne(form.file);
 
       await authedJSON("/api/admin/items", {
         method: "POST",
@@ -523,13 +614,29 @@ export default function AdminPage() {
           description: form.description,
           rozmiarMin: Number(form.rozmiarMin),
           rozmiarMax: Number(form.rozmiarMax),
+          rozmiarGlowny: form.rozmiarGlowny ? Number(form.rozmiarGlowny) : undefined,
           cenaPLN: Number(form.cenaPLN),
           numerPaska: Number(form.numerPaska),
-          imagePath: upData.path,
+          imagePath: uploadedPath,
         }),
       });
 
-      setForm({ categoryId: "", title: "", description: "", rozmiarMin: "", rozmiarMax: "", cenaPLN: "", numerPaska: "", file: null });
+      if (form.previewUrl) URL.revokeObjectURL(form.previewUrl);
+
+      setForm({
+        categoryId: "",
+        title: "",
+        description:
+          "Pasek ze skóry licowej najlepszej jakości, wycinany, farbiony ręcznie. Brzegi skóry malowane, zabezpieczony lakierem. Stosowane farby są głęboko penetrujące a co za tym idzie, nie złuszczają się, nie pękają, nie farbią ubrań gdy są mokre. Długość paska od klamry do końca 120cm.",
+        rozmiarMin: "",
+        rozmiarMax: "",
+        rozmiarGlowny: "",
+        cenaPLN: "",
+        numerPaska: "",
+        file: null,
+        previewUrl: "",
+      });
+
       await refreshItems();
       setMsg("Dodano przedmiot");
     } catch (e) {
@@ -540,23 +647,31 @@ export default function AdminPage() {
   };
 
   const startEditItem = (it: Item) => {
+    const catId = typeof it.categoryId === "string" ? it.categoryId : it.categoryId?._id;
     setEditItem((s) => ({
       ...s,
       [it._id]: {
-        categoryId: typeof it.categoryId === "string" ? it.categoryId : it.categoryId._id,
-        title: it.title,
+        categoryId: catId || "",
+        title: it.title || "",
         description: it.description || "",
+        titleEn: it.titleEn || "",
+        descriptionEn: it.descriptionEn || "",
         rozmiarMin: String(it.rozmiarMin ?? ""),
         rozmiarMax: String(it.rozmiarMax ?? ""),
+        rozmiarGlowny: it.rozmiarGlowny != null ? String(it.rozmiarGlowny) : "",
         cenaPLN: String(it.cenaPLN ?? ""),
         numerPaska: String(it.numerPaska ?? ""),
-        file: null,
+        imagePath: it.imagePath,
+        newFile: null,
+        newPreview: "",
       },
     }));
   };
 
   const cancelEditItem = (id: string) =>
     setEditItem((s) => {
+      const d = s[id];
+      if (d?.newPreview) URL.revokeObjectURL(d.newPreview);
       const n = { ...s };
       delete n[id];
       return n;
@@ -568,20 +683,9 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      let imagePath: string | undefined;
-
-      if (data.file) {
-        const fd = new FormData();
-        fd.append("file", data.file);
-        const upData = (await authedJSON<{ path: string }>("/api/admin/upload", {
-          method: "POST",
-          body: fd,
-        })) as { path: string } | null;
-
-        if (!upData || typeof upData !== "object" || !("path" in upData)) {
-          throw new Error("Błędna odpowiedź z uploadu");
-        }
-        imagePath = upData.path;
+      let imagePath = data.imagePath || "";
+      if (data.newFile) {
+        imagePath = await uploadOne(data.newFile);
       }
 
       await authedJSON(`/api/admin/items/${id}`, {
@@ -591,11 +695,14 @@ export default function AdminPage() {
           categoryId: data.categoryId,
           title: data.title,
           description: data.description,
+          titleEn: data.titleEn || undefined,
+          descriptionEn: data.descriptionEn || undefined,
           rozmiarMin: Number(data.rozmiarMin),
           rozmiarMax: Number(data.rozmiarMax),
+          rozmiarGlowny: data.rozmiarGlowny ? Number(data.rozmiarGlowny) : null,
           cenaPLN: Number(data.cenaPLN),
           numerPaska: Number(data.numerPaska),
-          ...(imagePath ? { imagePath } : {}),
+          imagePath,
         }),
       });
 
@@ -632,17 +739,41 @@ export default function AdminPage() {
         .filter((i) => (typeof i.categoryId === "string" ? i.categoryId : i.categoryId?._id) === c._id)
         .sort((a, b) => (a.numerPaska ?? 0) - (b.numerPaska ?? 0));
 
-      const images = its.map((i) => i.imagePath);
-      const belts: BeltItem[] = its.map((i) => ({
-        name: i.title,
-        description: i.description || "",
-        price: i.cenaPLN, // liczbowo – formatujemy w komponencie
-        upperSize: `${Math.max(i.rozmiarMin, i.rozmiarMax)} cm`,
-        lowerSize: `${Math.min(i.rozmiarMin, i.rozmiarMax)} cm`,
-      }));
-      return { title: c.name, images, items: belts };
+      const belts: BeltItem[] = its.map((i) => {
+        const namePL = i.title || "";
+        const descPL = i.description || "";
+        const nameEN = enCache[i._id]?.titleEn || i.titleEn;
+        const descEN = enCache[i._id]?.descriptionEn || i.descriptionEn;
+        const useEN = autoTranslateEN || previewLang === "en";
+        return {
+          name: useEN ? nameEN || namePL : namePL,
+          description: useEN ? descEN || descPL : descPL,
+          price: i.cenaPLN,
+          upperSize: `${Math.max(i.rozmiarMin, i.rozmiarMax)} cm`,
+          lowerSize: `${Math.min(i.rozmiarMin, i.rozmiarMax)} cm`,
+          mainSize: typeof i.rozmiarGlowny === "number" && !isNaN(i.rozmiarGlowny) ? `${i.rozmiarGlowny} cm` : undefined,
+          image: i.imagePath,
+        };
+      });
+      return { title: c.name, belts };
     });
-  }, [cats, items]);
+  }, [cats, items, previewLang, autoTranslateEN, enCache]);
+
+  // auto-translate cache
+  useEffect(() => {
+    (async () => {
+      if (!autoTranslateEN) return;
+      const map: Record<string, { titleEn: string; descriptionEn: string }> = { ...enCache };
+      for (const it of items) {
+        if (map[it._id]?.titleEn && map[it._id]?.descriptionEn) continue;
+        const titleEn = await translatePLtoEN(it.title || "");
+        const descriptionEn = await translatePLtoEN(it.description || "");
+        map[it._id] = { titleEn, descriptionEn };
+      }
+      setEnCache(map);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoTranslateEN, items]);
 
   /* ===== login screen ===== */
   if (!ok) {
@@ -672,26 +803,36 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-[#f5f5ef] text-neutral-900 p-4 md:p-8">
-      <div className="mx-auto max-w-6xl space-y-10">
+      <div className="mx-auto max-w-7xl space-y-10">
         <header className="flex items-center justify-between">
           <h1 className="text-xl md:text-2xl font-serif">Panel administracyjny</h1>
-          <div className="text-xs text-neutral-500">Hasło zapisane lokalnie</div>
+          <div className="flex items-center gap-2 text-xs text-neutral-500">
+            <button
+              onClick={() => setAutoTranslateEN((v) => !v)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ${
+                autoTranslateEN ? "bg-neutral-900 text-white border-neutral-900" : "bg-white"
+              }`}
+              title="Automatyczne tłumaczenie PL→EN (podgląd)"
+            >
+              <Languages className="h-4 w-4" /> EN auto
+            </button>
+            <span>Hasło zapisane lokalnie</span>
+          </div>
         </header>
 
         {/* ========== KATEGORIE ========== */}
         <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm">
           <h2 className="font-medium mb-4">Kategorie</h2>
 
-          <form onSubmit={submitCategory} className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <form onSubmit={submitCategory} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 mb-4">
             <input
               value={newCatName}
               onChange={(e) => setNewCatName(e.target.value)}
               placeholder="Nazwa kategorii"
-              className="rounded-lg border border-neutral-300 px-3 py-2"
+              className="rounded-lg border border-neutral-300 px-4 py-3 text-lg"
               required
             />
-            {/* opcjonalny slug (jeśli backend nie generuje automatycznie) */}
-            <button disabled={loading} className="rounded-lg bg-neutral-900 text-white px-4 py-2">
+            <button disabled={loading} className="rounded-lg bg-neutral-900 text-white px-6 py-3 text-lg">
               {loading ? "Zapisywanie…" : "Dodaj kategorię"}
             </button>
           </form>
@@ -703,7 +844,6 @@ export default function AdminPage() {
               const canDown = i < sortedCats.length - 1;
               return (
                 <li key={c._id} className="py-3 flex items-center gap-3">
-                  {/* content */}
                   {!isEditing ? (
                     <div className="flex-1">
                       <div className="font-medium">{c.name}</div>
@@ -724,16 +864,14 @@ export default function AdminPage() {
                     </div>
                   )}
 
-                  {/* actions */}
                   <div className="flex items-center gap-2">
-                    {/* move up/down */}
                     <button
                       onClick={() => moveCat(c._id, -1)}
                       disabled={!canUp}
                       className={`p-2 rounded ${canUp ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`}
                       title="Przenieś w górę"
                     >
-                      <ChevronUp className="h-4 w-4" />
+                      ↑
                     </button>
                     <button
                       onClick={() => moveCat(c._id, 1)}
@@ -741,7 +879,7 @@ export default function AdminPage() {
                       className={`p-2 rounded ${canDown ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`}
                       title="Przenieś w dół"
                     >
-                      <ChevronDown className="h-4 w-4" />
+                      ↓
                     </button>
 
                     {!isEditing ? (
@@ -773,61 +911,29 @@ export default function AdminPage() {
 
         {/* ========== PRZEDMIOTY ========== */}
         <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm text-gray-800">
-          <h2 className="font-medium mb-4">Dodaj przedmiot</h2>
+          <h2 className="font-medium mb-4">Dodaj pasek (mega prosto)</h2>
 
-          <form onSubmit={submitItem} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <select
-              value={form.categoryId}
-              onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
-              className="rounded-lg border border-neutral-300 px-3 py-2"
-              required
-            >
-              <option value="">Wybierz kategorię…</option>
-              {sortedCats.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <input
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="Tytuł"
-              className="rounded-lg border border-neutral-300 px-3 py-2"
-              required
-            />
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Opis"
-              className="rounded-lg border border-neutral-300 px-3 py-2 md:col-span-2"
-              rows={3}
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <input
-                type="number"
-                value={form.rozmiarMin}
-                onChange={(e) => setForm({ ...form, rozmiarMin: e.target.value })}
-                placeholder="Rozmiar min (cm)"
-                className="rounded-lg border border-neutral-300 px-3 py-2"
+          {/* UPROSZCZONY KREATOR */}
+          <form onSubmit={submitItem} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <select
+                value={form.categoryId}
+                onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
                 required
-              />
+              >
+                <option value="">Wybierz kategorię…</option>
+                {sortedCats.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
               <input
-                type="number"
-                value={form.rozmiarMax}
-                onChange={(e) => setForm({ ...form, rozmiarMax: e.target.value })}
-                placeholder="Rozmiar max (cm)"
-                className="rounded-lg border border-neutral-300 px-3 py-2"
-                required
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <input
-                type="number"
-                value={form.cenaPLN}
-                onChange={(e) => setForm({ ...form, cenaPLN: e.target.value })}
-                placeholder="Cena (PLN)"
-                className="rounded-lg border border-neutral-300 px-3 py-2"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                placeholder="Tytuł (PL)"
+                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
                 required
               />
               <input
@@ -835,131 +941,255 @@ export default function AdminPage() {
                 value={form.numerPaska}
                 onChange={(e) => setForm({ ...form, numerPaska: e.target.value })}
                 placeholder="Nr paska"
-                className="rounded-lg border border-neutral-300 px-3 py-2"
+                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
                 required
               />
             </div>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setForm({ ...form, file: e.target.files?.[0] || null })}
-              className="rounded-lg border border-neutral-300 px-3 py-2 md:col-span-2"
-              required
+
+            <textarea
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Pasek ze skóry…"
+              className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+              rows={3}
             />
-            <button disabled={loading} className="rounded-lg bg-neutral-900 text-white px-4 py-2 md:col-span-2">
-              {loading ? "Zapisywanie…" : "Dodaj przedmiot"}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input
+                type="number"
+                value={form.rozmiarMin}
+                onChange={(e) => setForm({ ...form, rozmiarMin: e.target.value })}
+                placeholder="Rozmiar min (cm)"
+                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                required
+              />
+              <input
+                type="number"
+                value={form.rozmiarMax}
+                onChange={(e) => setForm({ ...form, rozmiarMax: e.target.value })}
+                placeholder="Rozmiar max (cm)"
+                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                required
+              />
+              <input
+                type="number"
+                value={form.rozmiarGlowny}
+                onChange={(e) => setForm({ ...form, rozmiarGlowny: e.target.value })}
+                placeholder="Rozmiar główny (cm)"
+                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input
+                type="number"
+                value={form.cenaPLN}
+                onChange={(e) => setForm({ ...form, cenaPLN: e.target.value })}
+                placeholder="Cena (PLN)"
+                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                required
+              />
+              <label className="md:col-span-2 flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-neutral-300 px-4 py-6 cursor-pointer hover:bg-neutral-50">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    const url = file ? URL.createObjectURL(file) : "";
+                    if (form.previewUrl) URL.revokeObjectURL(form.previewUrl);
+                    setForm((s) => ({ ...s, file, previewUrl: url }));
+                  }}
+                />
+                <ImageIcon className="h-6 w-6" />
+                <span className="text-lg">Wrzuć zdjęcie</span>
+              </label>
+            </div>
+
+            {/* PODGLĄD ZDJĘCIA */}
+            {form.previewUrl && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="relative w-full aspect-[4/3]">
+                  <Image src={form.previewUrl} alt="preview" fill className="object-cover rounded-xl border" />
+                </div>
+              </div>
+            )}
+
+            <button disabled={loading} className="w-full rounded-2xl bg-neutral-900 text-white px-6 py-4 text-xl font-medium inline-flex items-center justify-center gap-2">
+              <Plus className="h-5 w-5" /> {loading ? "Zapisywanie…" : "Dodaj pasek"}
             </button>
           </form>
 
           {msg && <p className="mt-3 text-sm text-neutral-700">{msg}</p>}
 
-          <h3 className="mt-8 font-medium">Lista przedmiotów</h3>
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-            {items.map((it) => {
-              const editing = editItem[it._id];
+          {/* ====== LISTA PRZEDMIOTÓW + EDYCJA ====== */}
+          <h3 className="mt-8 font-medium">Paski wg kategorii</h3>
+          <div className="mt-4 space-y-8">
+            {sortedCats.map((c) => {
+              const its = items
+                .filter((i) => (typeof i.categoryId === "string" ? i.categoryId : i.categoryId?._id) === c._id)
+                .sort((a, b) => (a.numerPaska ?? 0) - (b.numerPaska ?? 0));
               return (
-                <div key={it._id} className="rounded-xl p-3 flex gap-3 bg-white">
-                  <div className="relative w-24 h-24">
-                    <Image src={it.imagePath} alt={it.title} fill sizes="96px" className="object-cover rounded-lg border" />
+                <div key={c._id}>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-lg font-semibold">{c.name}</h4>
+                    <div className="text-xs text-neutral-500">{its.length} szt.</div>
                   </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {its.map((it) => {
+                      const editing = editItem[it._id];
+                      const hero = editing?.newPreview || editing?.imagePath || it.imagePath || "/images/placeholder.png";
+                      return (
+                        <div key={it._id} className="rounded-2xl p-3 flex flex-col gap-3 bg-white border">
+                          {/* ZDJĘCIE */}
+                          <div className="relative w-full aspect-[4/3]">
+                            <Image src={hero} alt={it.title} fill sizes="400px" className="object-cover rounded-xl border" />
+                          </div>
 
-                  {!editing ? (
-                    <div className="flex-1 text-sm">
-                      <div className="font-medium">{it.title}</div>
-                      <div className="text-neutral-600">
-                        Kategoria: {typeof it.categoryId === "string" ? it.categoryId : it.categoryId?.name}
-                      </div>
-                      <div className="text-neutral-600">
-                        Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm
-                      </div>
-                      <div className="text-neutral-600">Cena: {it.cenaPLN} PLN, Nr: {it.numerPaska}</div>
-                      <div className="mt-2 flex gap-2">
-                        <button onClick={() => startEditItem(it)} className="px-3 py-1.5 rounded border hover:bg-neutral-50 text-neutral-700 flex items-center gap-1">
-                          <Pencil className="h-4 w-4" /> Edytuj
-                        </button>
-                        <button onClick={() => deleteItem(it._id)} className="px-3 py-1.5 rounded border hover:bg-red-50 text-red-600 flex items-center gap-1">
-                          <Trash2 className="h-4 w-4" /> Usuń
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex-1 grid grid-cols-1 gap-2 text-sm">
-                      <select
-                        value={editing.categoryId}
-                        onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], categoryId: e.target.value } }))}
-                        className="rounded border border-neutral-300 px-3 py-1.5"
-                      >
-                        {sortedCats.map((c) => (
-                          <option key={c._id} value={c._id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        value={editing.title}
-                        onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], title: e.target.value } }))}
-                        className="rounded border border-neutral-300 px-3 py-1.5"
-                        placeholder="Tytuł"
-                      />
-                      <textarea
-                        value={editing.description}
-                        onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], description: e.target.value } }))}
-                        className="rounded border border-neutral-300 px-3 py-1.5"
-                        placeholder="Opis"
-                        rows={2}
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="number"
-                          value={editing.rozmiarMin}
-                          onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMin: e.target.value } }))}
-                          className="rounded border border-neutral-300 px-3 py-1.5"
-                          placeholder="Min"
-                        />
-                        <input
-                          type="number"
-                          value={editing.rozmiarMax}
-                          onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMax: e.target.value } }))}
-                          className="rounded border border-neutral-300 px-3 py-1.5"
-                          placeholder="Max"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="number"
-                          value={editing.cenaPLN}
-                          onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], cenaPLN: e.target.value } }))}
-                          className="rounded border border-neutral-300 px-3 py-1.5"
-                          placeholder="Cena"
-                        />
-                        <input
-                          type="number"
-                          value={editing.numerPaska}
-                          onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], numerPaska: e.target.value } }))}
-                          className="rounded border border-neutral-300 px-3 py-1.5"
-                          placeholder="Nr"
-                        />
-                      </div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], file: e.target.files?.[0] || null } }))}
-                        className="rounded border border-neutral-300 px-3 py-1.5"
-                      />
-                      <div className="mt-1 flex gap-2">
-                        <button onClick={() => saveItem(it._id)} className="px-3 py-1.5 rounded border hover:bg-green-50 text-green-700 flex items-center gap-1">
-                          <Save className="h-4 w-4" /> Zapisz
-                        </button>
-                        <button onClick={() => cancelEditItem(it._id)} className="px-3 py-1.5 rounded border hover:bg-neutral-50 flex items-center gap-1">
-                          <X className="h-4 w-4" /> Anuluj
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                          {!editing ? (
+                            <div className="flex-1 text-sm">
+                              <div className="font-medium text-base">{it.title}</div>
+                              <div className="text-neutral-600">Kategoria: {typeof it.categoryId === "string" ? it.categoryId : it.categoryId?.name}</div>
+                              <div className="text-neutral-600">Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm</div>
+                              {typeof it.rozmiarGlowny === "number" && (
+                                <div className="text-neutral-600">Rozmiar główny: {it.rozmiarGlowny} cm</div>
+                              )}
+                              <div className="text-neutral-600">Cena: {it.cenaPLN} PLN, Nr: {it.numerPaska}</div>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button onClick={() => startEditItem(it)} className="px-4 py-2 rounded-lg border hover:bg-neutral-50 text-neutral-700 inline-flex items-center gap-1.5">
+                                  <Pencil className="h-4 w-4" /> Edytuj
+                                </button>
+                                <button onClick={() => deleteItem(it._id)} className="px-4 py-2 rounded-lg border hover:bg-red-50 text-red-600 inline-flex items-center gap-1.5">
+                                  <Trash2 className="h-4 w-4" /> Usuń
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex-1 grid grid-cols-1 gap-2 text-sm">
+                              <select
+                                value={editing.categoryId}
+                                onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], categoryId: e.target.value } }))}
+                                className="rounded-xl border border-neutral-300 px-3 py-2"
+                              >
+                                {sortedCats.map((c) => (
+                                  <option key={c._id} value={c._id}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                value={editing.title}
+                                onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], title: e.target.value } }))}
+                                className="rounded-xl border border-neutral-300 px-3 py-2"
+                                placeholder="Tytuł (PL)"
+                              />
+                              <textarea
+                                value={editing.description}
+                                onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], description: e.target.value } }))}
+                                className="rounded-xl border border-neutral-300 px-3 py-2"
+                                placeholder="Opis (PL)"
+                                rows={2}
+                              />
+
+                              {/* Pola EN (opcjonalnie) */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <input
+                                  value={editing.titleEn || ""}
+                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], titleEn: e.target.value } }))}
+                                  className="rounded-xl border border-neutral-300 px-3 py-2"
+                                  placeholder="Title (EN)"
+                                />
+                                <input
+                                  value={editing.descriptionEn || ""}
+                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], descriptionEn: e.target.value } }))}
+                                  className="rounded-xl border border-neutral-300 px-3 py-2"
+                                  placeholder="Description (EN)"
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-2">
+                                <input
+                                  type="number"
+                                  value={editing.rozmiarMin}
+                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMin: e.target.value } }))}
+                                  className="rounded-xl border border-neutral-300 px-3 py-2"
+                                  placeholder="Min"
+                                />
+                                <input
+                                  type="number"
+                                  value={editing.rozmiarMax}
+                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMax: e.target.value } }))}
+                                  className="rounded-xl border border-neutral-300 px-3 py-2"
+                                  placeholder="Max"
+                                />
+                                <input
+                                  type="number"
+                                  value={editing.rozmiarGlowny}
+                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarGlowny: e.target.value } }))}
+                                  className="rounded-xl border border-neutral-300 px-3 py-2"
+                                  placeholder="Główny"
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <input
+                                  type="number"
+                                  value={editing.cenaPLN}
+                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], cenaPLN: e.target.value } }))}
+                                  className="rounded-xl border border-neutral-300 px-3 py-2"
+                                  placeholder="Cena"
+                                />
+                                <input
+                                  type="number"
+                                  value={editing.numerPaska}
+                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], numerPaska: e.target.value } }))}
+                                  className="rounded-xl border border-neutral-300 px-3 py-2"
+                                  placeholder="Nr"
+                                />
+                              </div>
+
+                              {/* ZDJĘCIE: podmiana jednego */}
+                              <div>
+                                <div className="text-xs text-neutral-500 mb-1">Zdjęcie</div>
+                                <label className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-300 px-3 py-3 cursor-pointer hover:bg-neutral-50">
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0] || null;
+                                      setEditItem((s) => {
+                                        const prev = s[it._id];
+                                        if (prev?.newPreview) URL.revokeObjectURL(prev.newPreview);
+                                        return {
+                                          ...s,
+                                          [it._id]: { ...prev, newFile: file, newPreview: file ? URL.createObjectURL(file) : "" },
+                                        };
+                                      });
+                                    }}
+                                  />
+                                  <ImageIcon className="h-5 w-5" /> Podmień zdjęcie
+                                </label>
+                              </div>
+
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <button onClick={() => saveItem(it._id)} className="px-4 py-2 rounded-lg border hover:bg-green-50 text-green-700 inline-flex items-center gap-1.5">
+                                  <Save className="h-4 w-4" /> Zapisz
+                                </button>
+                                <button onClick={() => cancelEditItem(it._id)} className="px-4 py-2 rounded-lg border hover:bg-neutral-50 inline-flex items-center gap-1.5">
+                                  <X className="h-4 w-4" /> Anuluj
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {its.length === 0 && <div className="text-sm text-neutral-500">Brak przedmiotów w tej kategorii</div>}
+                  </div>
                 </div>
               );
             })}
-            {items.length === 0 && <div className="text-sm text-neutral-500">Brak przedmiotów</div>}
           </div>
         </section>
 
@@ -989,14 +1219,14 @@ export default function AdminPage() {
 
           <div className="space-y-16">
             {groupedForPreview
-              .filter((g) => g.images.length && g.items.length)
+              .filter((g) => g.belts.length)
               .map((g, idx) => (
                 <div key={idx}>
-                  <CategoryPreview title={g.title} images={g.images} items={g.items} lang={previewLang} />
+                  <CategoryPreview title={g.title} belts={g.belts} lang={previewLang} />
                   <div className="mt-6 mx-auto w-full h-px bg-neutral-200" />
                 </div>
               ))}
-            {groupedForPreview.every((g) => !g.images.length) && (
+            {groupedForPreview.every((g) => !g.belts.length) && (
               <div className="text-sm text-neutral-500">Brak danych do podglądu</div>
             )}
           </div>
