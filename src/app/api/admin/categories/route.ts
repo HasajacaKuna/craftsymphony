@@ -19,33 +19,64 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   await dbConnect();
-  const cats = await Category.find().sort({ order: 1, createdAt: 1 });
+  const cats = await Category.find({}, { name: 1, slug: 1, order: 1, createdAt: 1 })
+    .sort({ order: 1, createdAt: 1 })
+    .lean();
   return NextResponse.json(cats);
 }
+
+type CreateCategoryBody = {
+  name: string;
+  slug?: string;
+};
 
 export async function POST(req: Request) {
   if (!checkAdminPassword(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const body = await req.json();
-  const name = (body?.name || "").toString();
-  const providedSlug = (body?.slug || "").toString();
-  if (!name) return NextResponse.json({ error: "Podaj nazwę" }, { status: 400 });
+
+  // unikamy `any` i walidujemy kształt
+  let bodyUnknown: unknown;
+  try {
+    bodyUnknown = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  if (typeof bodyUnknown !== "object" || bodyUnknown === null) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const body = bodyUnknown as Partial<CreateCategoryBody>;
+
+  const rawName = String(body?.name ?? "").trim();
+  const rawSlug = String(body?.slug ?? "").trim();
+
+  if (!rawName) {
+    return NextResponse.json({ error: "Podaj nazwę" }, { status: 400 });
+  }
+  if (rawName.length > 120) {
+    return NextResponse.json({ error: "Nazwa jest za długa" }, { status: 400 });
+  }
 
   await dbConnect();
-  const slug = providedSlug || slugify(name);
-  const exists = await Category.findOne({ slug });
-  if (exists) return NextResponse.json({ error: "Taki slug już istnieje" }, { status: 409 });
 
-  // pobierz ostatnią kategorię po 'order' i wylicz następną wartość
-  // wariant A: z lean + typem
-  const last = await Category.findOne().sort({ order: -1 }).lean<{ order?: number }>();
+  const slug = (rawSlug ? slugify(rawSlug) : slugify(rawName)).slice(0, 140);
+  if (!slug) {
+    return NextResponse.json({ error: "Nie udało się wygenerować slug" }, { status: 400 });
+  }
+
+  const exists = await Category.findOne({ slug }).lean();
+  if (exists) {
+    return NextResponse.json({ error: "Taki slug już istnieje" }, { status: 409 });
+  }
+
+  // wylicz nextOrder (bez bitowych sztuczek)
+  const last = await Category.findOne({}, { order: 1 }).sort({ order: -1 }).lean<{ order?: number }>();
   const nextOrder = (typeof last?.order === "number" ? last.order : -1) + 1;
 
-  // wariant B (alternatywa): bez lean()
-  // const last = await Category.findOne().sort({ order: -1 }).select("order").exec();
-  // const nextOrder = ((last?.order as number | undefined) ?? -1) + 1;
+  const created = await Category.create({ name: rawName, slug, order: nextOrder });
 
-  const created = await Category.create({ name, slug, order: nextOrder });
-  return NextResponse.json(created, { status: 201 });
+  return NextResponse.json(
+    { _id: created._id, name: created.name, slug: created.slug, order: created.order, createdAt: created.createdAt },
+    { status: 201 }
+  );
 }

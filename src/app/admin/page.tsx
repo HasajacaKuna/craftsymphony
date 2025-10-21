@@ -2,8 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useSpring } from "framer-motion";
-import { Pencil, Save, X, Trash2, Plus, Image as ImageIcon, Languages, ChevronUp, ChevronDown } from "lucide-react";
-
+// na górze pliku, wśród importów z lucide-react:
+import { Pencil, Save, X, Trash2, Plus, Image as ImageIcon, Languages, ChevronUp, ChevronDown, Star, StarOff, ArrowUpAZ, ArrowDownAZ, ChevronLeft, ChevronRight } from "lucide-react";
 /* ========= helpers ========= */
 const API_HEADERS = (pwd: string) => ({ "x-admin-password": pwd });
 function errToString(e: unknown): string {
@@ -57,8 +57,15 @@ async function readJSON<T = unknown>(res: Response): Promise<T | null | { raw: s
 type Lang = "pl" | "en";
 
 type Category = { _id: string; name: string; slug: string; order?: number };
-
 type CategoryRef = { _id: string; name: string; slug: string };
+
+export type ItemImage = {
+  url: string;
+  altPl?: string;
+  altEn?: string;
+  isPrimary?: boolean;
+  order?: number;
+};
 
 type Item = {
   _id: string;
@@ -70,12 +77,13 @@ type Item = {
   rozmiarMin: number;
   rozmiarMax: number;
   rozmiarGlowny?: number | null;
+  rozSprz?: number | null;
   cenaPLN: number;
   numerPaska: number;
-  imagePath?: string; // JEDNO zdjęcie
+  images: ItemImage[];
 };
 
-// 1) BeltItem – dodaj numer:
+// 1) BeltItem – z numerem:
 type BeltItem = {
   name: string;
   description: string;
@@ -83,10 +91,10 @@ type BeltItem = {
   upperSize: string;
   lowerSize: string;
   mainSize?: string | number;
+  buckleSize?: string | number; // ⬅️ NOWE
   image?: string;
-  beltNo?: number; // ⇦ DODANE
+  beltNo?: number;
 };
-
 
 // Type guard for populated category
 function isCatObj(x: Item["categoryId"]): x is CategoryRef {
@@ -104,6 +112,8 @@ const UI_STRINGS: Record<
     mainSize: string;
     scrollUp: string;
     scrollDown: string;
+    buckleSize: string,
+    sizesInCm: string,
   }
 > = {
   pl: {
@@ -115,6 +125,9 @@ const UI_STRINGS: Record<
     mainSize: "Rozmiar główny",
     scrollUp: "Przewiń w górę",
     scrollDown: "Przewiń w dół",
+        buckleSize: "Rozmiar sprzączki",
+    sizesInCm: "Rozmiary w cm",
+    
   },
   en: {
     preview: "Preview (like the homepage)",
@@ -125,6 +138,8 @@ const UI_STRINGS: Record<
     mainSize: "Main size",
     scrollUp: "Scroll up",
     scrollDown: "Scroll down",
+    buckleSize: "Buckle size",
+    sizesInCm: "Sizes in cm",
   },
 };
 
@@ -151,10 +166,14 @@ function formatPriceForLang(price: string | number | undefined, lang: Lang) {
   }).format(usd);
 }
 
-/* ========= PODGLĄD KATEGORII — jedno zdjęcie w hero + miniatury ========= */
+/* ========= PODGLĄD KATEGORII ========= */
 function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltItem[]; lang: Lang }) {
-  // HOOKI — zawsze na górze
   const [active, setActive] = useState(0);
+
+  // >>> HOOKI ZAWSZE NA GÓRZE <<<
+  const [heroIdx, setHeroIdx] = useState(0); // index zdjęcia w galerii aktywnego paska
+  useEffect(() => setHeroIdx(0), [active]);
+
   const VISIBLE = 4;
   const THUMB_H = 96;
   const GAP = 12;
@@ -164,6 +183,7 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
 
   const hero = belts[active];
   const thumbs = belts.map((b) => b.image || "");
+  const gallery = thumbs.filter(Boolean);
 
   useEffect(() => {
     if (!thumbs.length) return;
@@ -181,10 +201,11 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
   const scrollUp = () => setScrollIndex((s) => Math.max(0, s - 1));
   const scrollDown = () => setScrollIndex((s) => Math.min(maxScrollIndex, s + 1));
 
-  // Guard PO wszystkich hookach
-  if (!belts.length) {
-    return null;
-  }
+  const goPrev = () => setHeroIdx((i) => (i > 0 ? i - 1 : Math.max(0, gallery.length - 1)));
+  const goNext = () => setHeroIdx((i) => (i < gallery.length - 1 ? i + 1 : 0));
+
+  // DOPIERO TERAZ ewentualny wczesny return
+  if (!belts.length) return null;
 
   return (
     <div>
@@ -192,104 +213,202 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
         <h1 className="font-serif text-2xl md:text-3xl tracking-wide">Craft Symphony - {title}</h1>
       </div>
 
+      {/* HERO pionowy + kolumna miniaturek po prawej (desktop) */}
       <div className="relative">
-        <div className="relative aspect-[4/3] md:aspect-[16/10] w-full overflow-hidden rounded-2xl shadow-sm border border-neutral-200">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`hero-${title}-${active}-${hero?.image ?? "noimg"}`}
-              initial={{ opacity: 0, scale: 1.02 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-              className="relative h-full w-full"
-            >
-              {hero?.image ? (
-                <Image src={hero.image} alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`} fill sizes="100vw" className="object-cover" />
-              ) : (
-                <div className="absolute inset-0 grid place-items-center text-neutral-500">Brak zdjęcia</div>
-              )}
-            </motion.div>
-          </AnimatePresence>
+        <div className="hidden md:grid grid-cols-[1fr_auto] gap-4 items-start">
+          {/* HERO – pionowy, obraz zawsze pasuje (contain) + watermark + strzałki */}
+          <div className="relative w-full">
+            <div className="relative w-full aspect-[3/4] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={`hero-${title}-${active}-${gallery[heroIdx] ?? "noimg"}`}
+                  initial={{ opacity: 0, scale: 1.01 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.99 }}
+                  transition={{ duration: 0.35, ease: "easeOut" }}
+                  className="relative h-full w-full"
+                >
+                  {gallery[heroIdx] ? (
+                    <>
+                      <Image
+                        src={gallery[heroIdx]}
+                        alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`}
+                        fill
+                        sizes="(max-width:1280px) 70vw, 800px"
+                        className="object-contain"
+                      />
+                      {/* znak wodny */}
+                      <div className="absolute left-2 bottom-2 opacity-80">
+                        <div className="relative h-8 w-8">
+                          <Image src="/images/znakwodny.png" alt="watermark" fill sizes="32px" className="object-contain pointer-events-none select-none" />
+                        </div>
+                      </div>
+                      {/* strzałki */}
+                      {gallery.length > 1 && (
+                        <>
+                          <button
+                            onClick={goPrev}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+                            aria-label="Poprzednie zdjęcie"
+                          >
+                            <ChevronLeft className="h-6 w-6" />
+                          </button>
+                          <button
+                            onClick={goNext}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+                            aria-label="Następne zdjęcie"
+                          >
+                            <ChevronRight className="h-6 w-6" />
+                          </button>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <div className="absolute inset-0 grid place-items-center text-neutral-500">Brak zdjęcia</div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </div>
+
+          {/* MINIATURY – prawa kolumna, poza obrazem */}
+          {thumbs.length > 1 && (
+            <div className="sticky top-24 self-start">
+              <div className="flex flex-col items-center gap-3">
+                <button onClick={scrollUp} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300 bg-white hover:bg-neutral-50" aria-label={t.scrollUp}>
+                  <ChevronUp className="h-5 w-5" />
+                </button>
+
+                <div className="relative h-[calc(4*96px+3*12px)] w-28 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+                  <motion.div style={{ y: ySpring }} className="absolute top-0 left-0 w-full">
+                    <div className="flex flex-col gap-3 p-2">
+                      {thumbs.map((src, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            setActive(i);
+                            setHeroIdx(0);
+                          }}
+                          className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${i === active ? "border-neutral-900 shadow" : "border-neutral-300 hover:border-neutral-500"}`}
+                          aria-label={`${t.numberLabel} ${(belts[i]?.beltNo ?? i + 1)}`}
+                          title={`Pasek ${(belts[i]?.beltNo ?? i + 1)}`}
+                        >
+                          <div className="relative h-24 w-full">
+                            {src ? (
+                              <Image src={src} alt={`thumb-${i + 1}`} fill sizes="112px" className="object-cover rounded-lg" />
+                            ) : (
+                              <div className="absolute inset-0 grid place-items-center text-neutral-300 text-xs">—</div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                </div>
+
+                <button onClick={scrollDown} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300 bg-white hover:bg-neutral-50" aria-label={t.scrollDown}>
+                  <ChevronDown className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* MOBILE – hero pionowy + miniatury w rzędzie */}
+        <div className="md:hidden mt-0">
+          <div className="relative w-full aspect-[3/4] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`m-hero-${title}-${active}-${gallery[heroIdx] ?? "noimg"}`}
+                initial={{ opacity: 0, scale: 1.01 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.99 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
+                className="relative h-full w-full"
+              >
+                {gallery[heroIdx] ? (
+                  <>
+                    <Image src={gallery[heroIdx]} alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`} fill sizes="100vw" className="object-contain" />
+                    <div className="absolute left-2 bottom-2 opacity-80">
+                      <div className="relative h-7 w-7">
+                        <Image src="/images/znakwodny.png" alt="watermark" fill sizes="28px" className="object-contain pointer-events-none select-none" />
+                      </div>
+                    </div>
+                    {gallery.length > 1 && (
+                      <>
+                        <button onClick={goPrev} className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm" aria-label="Poprzednie zdjęcie">
+                          <ChevronLeft className="h-5 w-5" />
+                        </button>
+                        <button onClick={goNext} className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm" aria-label="Następne zdjęcie">
+                          <ChevronRight className="h-5 w-5" />
+                        </button>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <div className="absolute inset-0 grid place-items-center text-neutral-500">Brak zdjęcia</div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </div>
 
           {thumbs.length > 1 && (
-            <div className="hidden md:flex absolute inset-y-0 right-4 my-4 flex-col items-center justify-center gap-3 select-none">
-              <div className="absolute inset-y-0 -inset-x-2 rounded-2xl bg-black/35 backdrop-blur-sm border border-white/20" />
-
-              <button onClick={scrollUp} className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 hover:bg-black/40 text-white shadow-sm" aria-label={t.scrollUp}>
-                <ChevronUp className="h-5 w-5" />
-              </button>
-
-              <div className="relative h-[calc(4*96px+3*12px)] w-28 overflow-hidden rounded-xl border border-white/20 bg-transparent">
-                <motion.div style={{ y: ySpring }} className="absolute top-0 left-0 w-full">
-                  <div className="flex flex-col gap-3 p-0">
-                    {thumbs.map((src, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setActive(i)}
-                        className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${i === active ? "border-neutral-900 shadow" : "border-neutral-300 hover:border-neutral-500"}`}
-aria-label={`${t.numberLabel} ${(belts[i]?.beltNo ?? i + 1)}`}
-title={`Pasek ${(belts[i]?.beltNo ?? i + 1)}`}
-                      >
-                        <div className="relative h-24 w-full">
-                          {src ? (
-                            <Image src={src} alt={`thumb-${i + 1}`} fill sizes="112px" className="object-cover rounded-lg" />
-                          ) : (
-                            <div className="absolute inset-0 grid place-items-center text-neutral-300 text-xs">—</div>
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </motion.div>
+            <div className="mt-3">
+              <div className="flex gap-3 overflow-x-auto px-1 py-1 snap-x snap-mandatory">
+                {thumbs.map((src, i) => (
+                  <button
+                    key={`m-thumb-${i}`}
+                    onClick={() => {
+                      setActive(i);
+                      setHeroIdx(0);
+                    }}
+                    className={`relative h-20 w-20 flex-none overflow-hidden rounded-lg border snap-start ${i === active ? "border-neutral-900 ring-2 ring-neutral-900" : "border-neutral-300 hover:border-neutral-500"}`}
+                    aria-label={`${t.numberLabel} ${i + 1}`}
+                  >
+                    <div className="relative h-20 w-20">
+                      {src ? (
+                        <Image src={src} alt={`thumb-${i + 1}`} fill sizes="80px" className="object-cover rounded-lg" />
+                      ) : (
+                        <div className="absolute inset-0 grid place-items-center text-neutral-300 text-xs">—</div>
+                      )}
+                    </div>
+                  </button>
+                ))}
               </div>
-
-              <button onClick={scrollDown} className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-black/30 hover:bg-black/40 text-white shadow-sm" aria-label={t.scrollDown}>
-                <ChevronDown className="h-5 w-5" />
-              </button>
             </div>
           )}
         </div>
       </div>
 
-      {belts.length > 1 && (
-        <div className="mt-3 flex flex-wrap justify-center gap-2">
-          {belts.map((_, i) => (
-            <button key={i} onClick={() => setActive(i)} className={`px-3 py-1.5 rounded-full border text-sm ${i === active ? "bg-neutral-900 text-white border-neutral-900" : "bg-white hover:bg-neutral-50"}`} title={`${t.numberLabel} ${i + 1}`}>
-              {t.numberLabel} {i + 1}
-            </button>
-          ))}
-        </div>
-      )}
-
+      {/* OPIS + ROZMIARÓWKA */}
       <div className="mt-6 md:mt-8 text-center">
         <div className="text-center mb-3">
-// Przyciski selektora poniżej galerii:
-{belts.length > 1 && (
-  <div className="mt-3 flex flex-wrap justify-center gap-2">
-    {belts.map((b, i) => (
-      <button
-        key={i}
-        onClick={() => setActive(i)}
-        className={`px-3 py-1.5 rounded-full border text-sm ${i === active ? "bg-neutral-900 text-white border-neutral-900" : "bg-white hover:bg-neutral-50"}`}
-        title={`${t.numberLabel} ${b.beltNo ?? i + 1}`}
-        aria-label={`${t.numberLabel} ${b.beltNo ?? i + 1}`}
-      >
-        {t.numberLabel} {b.beltNo ?? i + 1}
-      </button>
-    ))}
-  </div>
-)}
-
           <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">{hero?.description ?? "—"}</p>
         </div>
 
         <div className="max-w-4xl mx-auto">
           <div className="text-center text-sm text-neutral-600 mb-[-48px]">{hero?.upperSize ?? "—"}</div>
 
-          <div className="rounded-2xl overflow-hidden">
+          {/* nagłówek: Rozmiary w cm / Sizes in cm */}
+          <div className="text-center mt-14 mb-2">
+            <span className="text-[12px] uppercase tracking-wide text-neutral-500">{UI_STRINGS[lang].sizesInCm}</span>
+          </div>
+
+          <div className="rounded-2xl overflow-visible">
             <div className="relative mx-auto w-2/3 md:w-1/3 aspect-[3/2]">
               <Image src="/images/belt2.png" alt={UI_STRINGS[lang].schemaAlt} fill sizes="(max-width:768px) 66vw, 33vw" className="object-contain" />
-              <div className="hidden md:block absolute top-1/2 -translate-y-1/2 right-0 translate-x-[110%]">
+
+              {/* LEWY bąbelek: sprzączka + podpis */}
+              <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 left-0 -translate-x-[110%]">
+                <em className="text-xs text-neutral-500 not-italic italic">{UI_STRINGS[lang].buckleSize}</em>
+                <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/95 px-4 py-3 text-base font-medium shadow-sm min-w-[8rem] justify-center">
+                  {typeof hero?.buckleSize !== "undefined" && hero?.buckleSize !== null ? `${hero.buckleSize}` : "—"}
+                </div>
+              </div>
+
+              {/* PRAWY bąbelek: rozmiar główny + podpis */}
+              <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 right-0 translate-x-[110%]">
+                <em className="text-xs text-neutral-500 not-italic italic">{UI_STRINGS[lang].mainSize}</em>
                 <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/95 px-4 py-3 text-base font-medium shadow-sm min-w-[8rem] justify-center">
                   {typeof hero?.mainSize !== "undefined" && hero?.mainSize !== null ? `${hero.mainSize}` : "—"}
                 </div>
@@ -308,9 +427,10 @@ title={`Pasek ${(belts[i]?.beltNo ?? i + 1)}`}
   );
 }
 
+
 /* ========= główna strona panelu ========= */
 export default function AdminPage() {
-  // HOOKI — zawsze na górze
+  // HOOKI
   const [password, setPassword] = useState("");
   const [ok, setOk] = useState(false);
 
@@ -323,23 +443,29 @@ export default function AdminPage() {
 
   const [editCat, setEditCat] = useState<Record<string, { name: string; slug: string }>>({});
 
+  // CREATE form (z wieloma zdjęciami + EN)
   const [form, setForm] = useState({
     categoryId: "",
     title: "",
+    titleEn: "",
     description:
       "Pasek ze skóry licowej najlepszej jakości, wycinany, farbiony ręcznie. Brzegi skóry malowane, zabezpieczony lakierem. Stosowane farby są głęboko penetrujące a co za tym idzie, nie złuszczają się, nie pękają, nie farbią ubrań gdy są mokre. Długość paska od klamry do końca 120cm.",
+    descriptionEn: "",
     rozmiarMin: "",
     rozmiarMax: "",
     rozmiarGlowny: "",
+    rozSprz: "",
     cenaPLN: "",
     numerPaska: "",
-    file: null as File | null,
-    previewUrl: "" as string,
+    files: [] as File[],
+    previews: [] as string[],
+    imagesMeta: [] as Omit<ItemImage, "url">[], // alt-y/isPrimary/order dla uploadowanych
   });
 
   const [autoTranslateEN, setAutoTranslateEN] = useState(false);
   const [enCache, setEnCache] = useState<Record<string, { titleEn: string; descriptionEn: string }>>({});
 
+  // EDIT state per item – z wieloma zdjęciami
   const [editItem, setEditItem] = useState<
     Record<
       string,
@@ -352,11 +478,14 @@ export default function AdminPage() {
         rozmiarMin: string;
         rozmiarMax: string;
         rozmiarGlowny: string;
+        rozSprz: string;
         cenaPLN: string;
         numerPaska: string;
-        imagePath?: string;
-        newFile: File | null;
-        newPreview?: string;
+
+        images: ItemImage[];     // istniejące (z URL-ami)
+        newFiles: File[];        // nowe do uploadu
+        newPreviews: string[];   // URL.createObjectURL
+        newMeta: Omit<ItemImage, "url">[]; // meta dla nowych
       }
     >
   >({});
@@ -410,6 +539,12 @@ export default function AdminPage() {
   const refreshItems = async () => {
     const data = (await authedJSON<Item[]>("/api/admin/items")) ?? [];
     const arr = Array.isArray(data) ? data : [];
+    // fallback: jeżeli jakiś item nie ma orderów/isPrimary – generujemy
+    arr.forEach((it) => {
+      it.images = (it.images ?? [])
+        .map((img, idx) => ({ order: idx, isPrimary: idx === 0, altPl: "", altEn: "", ...img }))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    });
     setItems(arr);
   };
 
@@ -529,7 +664,7 @@ export default function AdminPage() {
     }
   };
 
-  /* ===== upload helper: jeden plik ===== */
+  /* ===== upload helpers ===== */
   const uploadOne = async (file: File): Promise<string> => {
     const fd = new FormData();
     fd.append("file", file);
@@ -542,15 +677,34 @@ export default function AdminPage() {
     return (upData as { path: string }).path;
   };
 
+  const uploadMany = async (files: File[]) => {
+    const urls: string[] = [];
+    for (const f of files) {
+      // upload sekwencyjny – prosto i stabilnie
+      const url = await uploadOne(f);
+      urls.push(url);
+    }
+    return urls;
+  };
+
   /* ===== items: create / edit / delete ===== */
+
+  // CREATE
   const submitItem = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMsg(null);
     try {
-      if (!form.file) throw new Error("Dodaj zdjęcie");
+      if (!form.files.length) throw new Error("Dodaj co najmniej jedno zdjęcie");
 
-      const uploadedPath = await uploadOne(form.file);
+      const uploaded = await uploadMany(form.files);
+      // zlep meta + url-e
+      const imgs: ItemImage[] = uploaded.map((url, i) => ({
+        url,
+        ...(form.imagesMeta[i] || {}),
+        order: form.imagesMeta[i]?.order ?? i,
+        isPrimary: form.imagesMeta[i]?.isPrimary ?? i === 0,
+      }));
 
       await authedJSON("/api/admin/items", {
         method: "POST",
@@ -558,30 +712,39 @@ export default function AdminPage() {
         body: JSON.stringify({
           categoryId: form.categoryId,
           title: form.title,
+          titleEn: form.titleEn || undefined,
           description: form.description,
+          descriptionEn: form.descriptionEn || undefined,
           rozmiarMin: Number(form.rozmiarMin),
           rozmiarMax: Number(form.rozmiarMax),
           rozmiarGlowny: form.rozmiarGlowny ? Number(form.rozmiarGlowny) : undefined,
+          rozSprz: form.rozSprz ? Number(form.rozSprz) : undefined,
           cenaPLN: Number(form.cenaPLN),
           numerPaska: Number(form.numerPaska),
-          imagePath: uploadedPath,
+          images: imgs,
         }),
       });
 
-      if (form.previewUrl) URL.revokeObjectURL(form.previewUrl);
+      // cleanup previews
+      form.previews.forEach((u) => URL.revokeObjectURL(u));
 
+      // reset
       setForm({
         categoryId: "",
         title: "",
+        titleEn: "",
         description:
           "Pasek ze skóry licowej najlepszej jakości, wycinany, farbiony ręcznie. Brzegi skóry malowane, zabezpieczony lakierem. Stosowane farby są głęboko penetrujące a co za tym idzie, nie złuszczają się, nie pękają, nie farbią ubrań gdy są mokre. Długość paska od klamry do końca 120cm.",
+        descriptionEn: "",
         rozmiarMin: "",
         rozmiarMax: "",
         rozmiarGlowny: "",
+        rozSprz: "", 
         cenaPLN: "",
         numerPaska: "",
-        file: null,
-        previewUrl: "",
+        files: [],
+        previews: [],
+        imagesMeta: [],
       });
 
       await refreshItems();
@@ -593,8 +756,15 @@ export default function AdminPage() {
     }
   };
 
+  // START EDIT
   const startEditItem = (it: Item) => {
     const catId = typeof it.categoryId === "string" ? it.categoryId : it.categoryId?._id;
+    // posortuj po order
+    const sortedImgs = [...(it.images ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    // jeżeli brak primary – ustaw pierwszy
+    if (!sortedImgs.some((x) => x.isPrimary)) {
+      if (sortedImgs[0]) sortedImgs[0].isPrimary = true;
+    }
     setEditItem((s) => ({
       ...s,
       [it._id]: {
@@ -606,11 +776,13 @@ export default function AdminPage() {
         rozmiarMin: String(it.rozmiarMin ?? ""),
         rozmiarMax: String(it.rozmiarMax ?? ""),
         rozmiarGlowny: it.rozmiarGlowny != null ? String(it.rozmiarGlowny) : "",
+        rozSprz: it.rozSprz != null ? String(it.rozSprz) : "",
         cenaPLN: String(it.cenaPLN ?? ""),
         numerPaska: String(it.numerPaska ?? ""),
-        imagePath: it.imagePath,
-        newFile: null,
-        newPreview: "",
+        images: sortedImgs,
+        newFiles: [],
+        newPreviews: [],
+        newMeta: [],
       },
     }));
   };
@@ -618,21 +790,46 @@ export default function AdminPage() {
   const cancelEditItem = (id: string) =>
     setEditItem((s) => {
       const d = s[id];
-      if (d?.newPreview) URL.revokeObjectURL(d.newPreview);
+      d?.newPreviews?.forEach((u) => URL.revokeObjectURL(u));
       const n = { ...s };
       delete n[id];
       return n;
     });
 
+  // SAVE EDIT
   const saveItem = async (id: string) => {
     const data = editItem[id];
     if (!data) return;
     setLoading(true);
     setMsg(null);
     try {
-      let imagePath = data.imagePath || "";
-      if (data.newFile) {
-        imagePath = await uploadOne(data.newFile);
+      // upload nowych
+      const newUrls = await uploadMany(data.newFiles);
+      const newImgs: ItemImage[] = newUrls.map((url, i) => ({
+        url,
+        ...(data.newMeta[i] || {}),
+        order: data.newMeta[i]?.order ?? (data.images.length + i),
+        isPrimary: data.newMeta[i]?.isPrimary ?? false,
+      }));
+
+      // sklej wszystko
+      const merged = [...data.images, ...newImgs]
+        .map((img, idx) => ({ ...img, order: img.order ?? idx })) // upewnij się, że każdy ma order
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+      // gwarancja jednego primary
+      if (!merged.some((x) => x.isPrimary)) {
+        if (merged[0]) merged[0].isPrimary = true;
+      } else {
+        // jeżeli kilka zaznaczonych, zostaw pierwszy
+        let hit = false;
+        merged.forEach((m) => {
+          if (m.isPrimary && !hit) {
+            hit = true;
+          } else if (m.isPrimary && hit) {
+            m.isPrimary = false;
+          }
+        });
       }
 
       await authedJSON(`/api/admin/items/${id}`, {
@@ -647,9 +844,10 @@ export default function AdminPage() {
           rozmiarMin: Number(data.rozmiarMin),
           rozmiarMax: Number(data.rozmiarMax),
           rozmiarGlowny: data.rozmiarGlowny ? Number(data.rozmiarGlowny) : null,
+          rozSprz: data.rozSprz ? Number(data.rozSprz) : null,
           cenaPLN: Number(data.cenaPLN),
           numerPaska: Number(data.numerPaska),
-          imagePath,
+          images: merged,
         }),
       });
 
@@ -690,30 +888,33 @@ export default function AdminPage() {
         })
         .sort((a, b) => (a.numerPaska ?? 0) - (b.numerPaska ?? 0));
 
-// 2) groupedForPreview – podczas mapowania dodaj beltNo
-const belts: BeltItem[] = its.map((i) => {
-  const namePL = i.title || "";
-  const descPL = i.description || "";
-  const nameEN = enCache[i._id]?.titleEn || i.titleEn;
-  const descEN = enCache[i._id]?.descriptionEn || i.descriptionEn;
-  const useEN = autoTranslateEN || previewLang === "en";
-  return {
-    name: useEN ? nameEN || namePL : namePL,
-    description: useEN ? descEN || descPL : descPL,
-    price: i.cenaPLN,
-    upperSize: `${Math.max(i.rozmiarMin, i.rozmiarMax)} cm`,
-    lowerSize: `${Math.min(i.rozmiarMin, i.rozmiarMax)} cm`,
-    mainSize: typeof i.rozmiarGlowny === "number" && !isNaN(i.rozmiarGlowny) ? `${i.rozmiarGlowny} cm` : undefined,
-    image: i.imagePath,
-    beltNo: i.numerPaska, // ⇦ DODANE
-  };
-});
+      const belts: BeltItem[] = its.map((i) => {
+        const namePL = i.title || "";
+        const descPL = i.description || "";
+        const nameEN = enCache[i._id]?.titleEn || i.titleEn;
+        const descEN = enCache[i._id]?.descriptionEn || i.descriptionEn;
+        const useEN = autoTranslateEN || previewLang === "en";
+        const primary = (i.images ?? []).find((im) => im.isPrimary) || (i.images ?? [])[0];
+
+        return {
+          name: useEN ? nameEN || namePL : namePL,
+          description: useEN ? descEN || descPL : descPL,
+          price: i.cenaPLN,
+          upperSize: `${Math.max(i.rozmiarMin, i.rozmiarMax)} cm`,
+          lowerSize: `${Math.min(i.rozmiarMin, i.rozmiarMax)} cm`,
+          mainSize: typeof i.rozmiarGlowny === "number" && !isNaN(i.rozmiarGlowny) ? `${i.rozmiarGlowny} cm` : undefined,
+          // NOWE: sprzączka → bąbelek po lewej
+          buckleSize: typeof i.rozSprz === "number" && !isNaN(i.rozSprz) ? `${i.rozSprz} cm` : undefined,
+          image: primary?.url,
+          beltNo: i.numerPaska,
+        };
+      });
 
       return { title: c.name, belts };
     });
   }, [cats, items, previewLang, autoTranslateEN, enCache]);
 
-  // auto-translate cache — efekt ZAWSZE wywołany, warunek w środku
+  // auto-translate cache — efekt
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -757,6 +958,35 @@ const belts: BeltItem[] = its.map((i) => {
 
   /* ===== main admin UI ===== */
   const sortedCats = [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  // helpers UI do reorder/toggle primary w CREATE
+  const setCreateImgMeta = (idx: number, patch: Partial<Omit<ItemImage, "url">>) =>
+    setForm((s) => {
+      const meta = [...s.imagesMeta];
+      meta[idx] = { ...meta[idx], ...patch };
+      return { ...s, imagesMeta: meta };
+    });
+
+  const ensureOnePrimaryCreate = (setIndexPrimary: number) =>
+    setForm((s) => {
+      const meta = s.imagesMeta.map((m, i) => ({ ...m, isPrimary: i === setIndexPrimary }));
+      return { ...s, imagesMeta: meta };
+    });
+
+  const reorderCreate = (idx: number, dir: -1 | 1) =>
+    setForm((s) => {
+      const files = [...s.files];
+      const previews = [...s.previews];
+      const meta = [...s.imagesMeta];
+      const j = idx + dir;
+      if (j < 0 || j >= files.length) return s;
+      [files[idx], files[j]] = [files[j], files[idx]];
+      [previews[idx], previews[j]] = [previews[j], previews[idx]];
+      [meta[idx], meta[j]] = [meta[j], meta[idx]];
+      // przelicz ordery
+      const withOrder = meta.map((m, i) => ({ ...m, order: i }));
+      return { ...s, files, previews, imagesMeta: withOrder };
+    });
 
   return (
     <main className="min-h-screen bg-[#f5f5ef] text-neutral-900 p-4 md:p-8">
@@ -852,7 +1082,7 @@ const belts: BeltItem[] = its.map((i) => {
 
         {/* PRZEDMIOTY */}
         <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm text-gray-800">
-          <h2 className="font-medium mb-4">Dodaj pasek (mega prosto)</h2>
+          <h2 className="font-medium mb-4">Dodaj pasek (multi-zdjęcia + EN)</h2>
 
           <form onSubmit={submitItem} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -863,38 +1093,128 @@ const belts: BeltItem[] = its.map((i) => {
                 ))}
               </select>
               <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Tytuł (PL)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
-              <input type="number" value={form.numerPaska} onChange={(e) => setForm({ ...form, numerPaska: e.target.value })} placeholder="Nr paska" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
+              <input value={form.titleEn} onChange={(e) => setForm({ ...form, titleEn: e.target.value })} placeholder="Title (EN)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" />
             </div>
 
-            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Pasek ze skóry…" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Opis (PL)" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
+              <textarea value={form.descriptionEn} onChange={(e) => setForm({ ...form, descriptionEn: e.target.value })} placeholder="Description (EN)" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <input type="number" value={form.rozmiarMin} onChange={(e) => setForm({ ...form, rozmiarMin: e.target.value })} placeholder="Rozmiar min (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
               <input type="number" value={form.rozmiarMax} onChange={(e) => setForm({ ...form, rozmiarMax: e.target.value })} placeholder="Rozmiar max (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
+              <input
+                type="number"
+                value={form.rozSprz}
+                onChange={(e) => setForm({ ...form, rozSprz: e.target.value })}
+                placeholder="Rozmiar sprzączki (cm)"
+                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+              />
               <input type="number" value={form.rozmiarGlowny} onChange={(e) => setForm({ ...form, rozmiarGlowny: e.target.value })} placeholder="Rozmiar główny (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <input type="number" value={form.cenaPLN} onChange={(e) => setForm({ ...form, cenaPLN: e.target.value })} placeholder="Cena (PLN)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
-              <label className="md:col-span-2 flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-neutral-300 px-4 py-6 cursor-pointer hover:bg-neutral-50">
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  const url = file ? URL.createObjectURL(file) : "";
-                  if (form.previewUrl) URL.revokeObjectURL(form.previewUrl);
-                  setForm((s) => ({ ...s, file, previewUrl: url }));
-                }} />
-                <ImageIcon className="h-6 w-6" />
-                <span className="text-lg">Wrzuć zdjęcie</span>
-              </label>
+              <input type="number" value={form.numerPaska} onChange={(e) => setForm({ ...form, numerPaska: e.target.value })} placeholder="Nr paska" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
             </div>
 
-            {form.previewUrl && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="relative w-full aspect-[4/3]">
-                  <Image src={form.previewUrl} alt="preview" fill className="object-cover rounded-xl border" />
+            {/* UPLOAD WIELOKROTNY */}
+            <div className="space-y-3">
+              <label className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-neutral-300 px-4 py-6 cursor-pointer hover:bg-neutral-50">
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    if (!files.length) return;
+                    const previews = files.map((f) => URL.createObjectURL(f));
+                    const meta: Omit<ItemImage, "url">[] = files.map((_, i) => ({
+                      altPl: "",
+                      altEn: "",
+                      isPrimary: form.files.length === 0 && i === 0, // jeśli pierwsze zdjęcia – ustaw primary na pierwszym
+                      order: form.files.length + i,
+                    }));
+                    setForm((s) => ({
+                      ...s,
+                      files: [...s.files, ...files],
+                      previews: [...s.previews, ...previews],
+                      imagesMeta: [...s.imagesMeta, ...meta],
+                    }));
+                  }}
+                />
+                <ImageIcon className="h-6 w-6" />
+                <span className="text-lg">Wrzuć zdjęcia (możesz wiele)</span>
+              </label>
+
+              {/* Galeria draft */}
+              {form.previews.length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {form.previews.map((src, i) => {
+                    const meta = form.imagesMeta[i] || {};
+                    const primary = !!meta.isPrimary;
+                    return (
+                      <div key={i} className="rounded-xl border overflow-hidden">
+                        <div className="relative w-full aspect-[4/3]">
+                          <Image src={src} alt={`preview-${i + 1}`} fill className="object-cover" />
+                          <div className="absolute top-2 left-2 flex gap-1">
+                            <button type="button" onClick={() => ensureOnePrimaryCreate(i)} className={`px-2 py-1 text-xs rounded ${primary ? "bg-yellow-400/90" : "bg-white/80 border"}`} title={primary ? "Zdjęcie główne" : "Ustaw jako główne"}>
+                              {primary ? <Star className="h-3.5 w-3.5" /> : <StarOff className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                          <div className="absolute top-2 right-2 flex gap-1">
+                            <button type="button" onClick={() => reorderCreate(i, -1)} className="px-2 py-1 text-xs rounded bg-white/80 border" title="W górę">
+                              <ArrowUpAZ className="h-3.5 w-3.5" />
+                            </button>
+                            <button type="button" onClick={() => reorderCreate(i, 1)} className="px-2 py-1 text-xs rounded bg-white/80 border" title="W dół">
+                              <ArrowDownAZ className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="p-2 space-y-1">
+                          <input
+                            value={meta.altPl ?? ""}
+                            onChange={(e) => setCreateImgMeta(i, { altPl: e.target.value })}
+                            className="w-full rounded border px-2 py-1 text-xs"
+                            placeholder="ALT (PL)"
+                          />
+                          <input
+                            value={meta.altEn ?? ""}
+                            onChange={(e) => setCreateImgMeta(i, { altEn: e.target.value })}
+                            className="w-full rounded border px-2 py-1 text-xs"
+                            placeholder="ALT (EN)"
+                          />
+                          <button
+                            type="button"
+                            className="w-full rounded border px-2 py-1 text-xs hover:bg-red-50 text-red-600"
+                            onClick={() =>
+                              setForm((s) => {
+                                const files = [...s.files];
+                                const previews = [...s.previews];
+                                const meta = [...s.imagesMeta];
+                                URL.revokeObjectURL(previews[i]);
+                                files.splice(i, 1);
+                                previews.splice(i, 1);
+                                meta.splice(i, 1);
+                                // przelicz order
+                                const withOrder = meta.map((m, idx) => ({ ...m, order: idx }));
+                                // jeżeli usunęliśmy primary – ustaw 0 jako primary
+                                if (!withOrder.some((m) => m.isPrimary) && withOrder[0]) withOrder[0].isPrimary = true;
+                                return { ...s, files, previews, imagesMeta: withOrder };
+                              })
+                            }
+                          >
+                            Usuń
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <button disabled={loading} className="w-full rounded-2xl bg-neutral-900 text-white px-6 py-4 text-xl font-medium inline-flex items-center justify-center gap-2">
               <Plus className="h-5 w-5" /> {loading ? "Zapisywanie…" : "Dodaj pasek"}
@@ -922,7 +1242,8 @@ const belts: BeltItem[] = its.map((i) => {
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {its.map((it) => {
                       const editing = editItem[it._id];
-                      const hero = editing?.newPreview || editing?.imagePath || it.imagePath || "/images/placeholder.png";
+                      const primary = (editing?.images ?? it.images ?? []).find((im) => im.isPrimary) || (editing?.images ?? it.images ?? [])[0];
+                      const hero = primary?.url || "/images/placeholder.png";
                       const catName = typeof it.categoryId === "string" ? it.categoryId : isCatObj(it.categoryId) ? it.categoryId.name : "";
                       return (
                         <div key={it._id} className="rounded-2xl p-3 flex flex-col gap-3 bg-white border">
@@ -933,10 +1254,14 @@ const belts: BeltItem[] = its.map((i) => {
                           {!editing ? (
                             <div className="flex-1 text-sm">
                               <div className="font-medium text-base">{it.title}</div>
+                              <div className="text-neutral-600">EN: {it.titleEn || "—"}</div>
                               <div className="text-neutral-600">Kategoria: {catName}</div>
                               <div className="text-neutral-600">Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm</div>
                               {typeof it.rozmiarGlowny === "number" && (
                                 <div className="text-neutral-600">Rozmiar główny: {it.rozmiarGlowny} cm</div>
+                              )}
+                              {typeof it.rozSprz === "number" && (
+                                <div className="text-neutral-600">Sprzączka: {it.rozSprz} cm</div>
                               )}
                               <div className="text-neutral-600">Cena: {it.cenaPLN} PLN, Nr: {it.numerPaska}</div>
 
@@ -968,25 +1293,247 @@ const belts: BeltItem[] = its.map((i) => {
                                 <input type="number" value={editing.rozmiarMin} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMin: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Min" />
                                 <input type="number" value={editing.rozmiarMax} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMax: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Max" />
                                 <input type="number" value={editing.rozmiarGlowny} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarGlowny: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Główny" />
+                                <input
+                                  type="number"
+                                  value={editing.rozSprz}
+                                  onChange={(e) =>
+                                    setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozSprz: e.target.value } }))
+                                  }
+                                  className="rounded-xl border border-neutral-300 px-3 py-2"
+                                  placeholder="Sprzączka"
+                                />
                               </div>
                               <div className="grid grid-cols-2 gap-2">
                                 <input type="number" value={editing.cenaPLN} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], cenaPLN: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Cena" />
                                 <input type="number" value={editing.numerPaska} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], numerPaska: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Nr" />
                               </div>
 
-                              <div>
-                                <div className="text-xs text-neutral-500 mb-1">Zdjęcie</div>
+                              {/* ISTNIEJĄCE ZDJĘCIA */}
+                              <div className="mt-2">
+                                <div className="text-xs text-neutral-500 mb-1">Zdjęcia</div>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                  {editing.images.map((img, i) => (
+                                    <div key={i} className="rounded-lg border overflow-hidden">
+                                      <div className="relative w-full aspect-[4/3]">
+                                        <Image src={img.url} alt={img.altPl || img.altEn || `img-${i + 1}`} fill className="object-cover" />
+                                        <div className="absolute top-2 left-2 flex gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setEditItem((s) => {
+                                                const cur = s[it._id];
+                                                const imgs = cur.images.map((m, idx) => ({ ...m, isPrimary: idx === i }));
+                                                return { ...s, [it._id]: { ...cur, images: imgs } };
+                                              })
+                                            }
+                                            className={`px-2 py-1 text-xs rounded ${img.isPrimary ? "bg-yellow-400/90" : "bg-white/80 border"}`}
+                                            title={img.isPrimary ? "Zdjęcie główne" : "Ustaw jako główne"}
+                                          >
+                                            {img.isPrimary ? <Star className="h-3.5 w-3.5" /> : <StarOff className="h-3.5 w-3.5" />}
+                                          </button>
+                                        </div>
+                                        <div className="absolute top-2 right-2 flex gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setEditItem((s) => {
+                                                const cur = s[it._id];
+                                                const imgs = [...cur.images];
+                                                if (i > 0) {
+                                                  [imgs[i - 1], imgs[i]] = [imgs[i], imgs[i - 1]];
+                                                }
+                                                // przelicz ordery
+                                                imgs.forEach((m, idx) => (m.order = idx));
+                                                return { ...s, [it._id]: { ...cur, images: imgs } };
+                                              })
+                                            }
+                                            className="px-2 py-1 text-xs rounded bg-white/80 border"
+                                            title="W górę"
+                                          >
+                                            <ArrowUpAZ className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setEditItem((s) => {
+                                                const cur = s[it._id];
+                                                const imgs = [...cur.images];
+                                                if (i < imgs.length - 1) {
+                                                  [imgs[i + 1], imgs[i]] = [imgs[i], imgs[i + 1]];
+                                                }
+                                                imgs.forEach((m, idx) => (m.order = idx));
+                                                return { ...s, [it._id]: { ...cur, images: imgs } };
+                                              })
+                                            }
+                                            className="px-2 py-1 text-xs rounded bg-white/80 border"
+                                            title="W dół"
+                                          >
+                                            <ArrowDownAZ className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <div className="p-2 space-y-1">
+                                        <input
+                                          value={img.altPl ?? ""}
+                                          onChange={(e) =>
+                                            setEditItem((s) => {
+                                              const cur = s[it._id];
+                                              const imgs = [...cur.images];
+                                              imgs[i] = { ...imgs[i], altPl: e.target.value };
+                                              return { ...s, [it._id]: { ...cur, images: imgs } };
+                                            })
+                                          }
+                                          className="w-full rounded border px-2 py-1 text-xs"
+                                          placeholder="ALT (PL)"
+                                        />
+                                        <input
+                                          value={img.altEn ?? ""}
+                                          onChange={(e) =>
+                                            setEditItem((s) => {
+                                              const cur = s[it._id];
+                                              const imgs = [...cur.images];
+                                              imgs[i] = { ...imgs[i], altEn: e.target.value };
+                                              return { ...s, [it._id]: { ...cur, images: imgs } };
+                                            })
+                                          }
+                                          className="w-full rounded border px-2 py-1 text-xs"
+                                          placeholder="ALT (EN)"
+                                        />
+                                        <button
+                                          type="button"
+                                          className="w-full rounded border px-2 py-1 text-xs hover:bg-red-50 text-red-600"
+                                          onClick={() =>
+                                            setEditItem((s) => {
+                                              const cur = s[it._id];
+                                              const imgs = [...cur.images];
+                                              imgs.splice(i, 1);
+                                              imgs.forEach((m, idx) => (m.order = idx));
+                                              if (!imgs.some((m) => m.isPrimary) && imgs[0]) imgs[0].isPrimary = true;
+                                              return { ...s, [it._id]: { ...cur, images: imgs } };
+                                            })
+                                          }
+                                        >
+                                          Usuń
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* DODAJ NOWE ZDJĘCIA */}
+                              <div className="mt-2">
                                 <label className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-300 px-3 py-3 cursor-pointer hover:bg-neutral-50">
-                                  <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                                    const file = e.target.files?.[0] || null;
-                                    setEditItem((s) => {
-                                      const prev = s[it._id];
-                                      if (prev?.newPreview) URL.revokeObjectURL(prev.newPreview);
-                                      return { ...s, [it._id]: { ...prev, newFile: file, newPreview: file ? URL.createObjectURL(file) : "" } };
-                                    });
-                                  }} />
-                                  <ImageIcon className="h-5 w-5" /> Podmień zdjęcie
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const files = Array.from(e.target.files || []);
+                                      if (!files.length) return;
+                                      const previews = files.map((f) => URL.createObjectURL(f));
+                                      setEditItem((s) => {
+                                        const cur = s[it._id];
+                                        const startOrder = cur.images.length + cur.newFiles.length;
+                                        const newMeta = files.map((_, idx) => ({ altPl: "", altEn: "", isPrimary: false, order: startOrder + idx }));
+                                        return {
+                                          ...s,
+                                          [it._id]: {
+                                            ...cur,
+                                            newFiles: [...cur.newFiles, ...files],
+                                            newPreviews: [...cur.newPreviews, ...previews],
+                                            newMeta: [...cur.newMeta, ...newMeta],
+                                          },
+                                        };
+                                      });
+                                    }}
+                                  />
+                                  <ImageIcon className="h-5 w-5" /> Dodaj zdjęcia
                                 </label>
+
+                                {/* podgląd nowych */}
+                                {editing.newPreviews.length > 0 && (
+                                  <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
+                                    {editing.newPreviews.map((src, i) => {
+                                      const meta = editing.newMeta[i] || {};
+                                      const absoluteIndex = i; // w nowej paczce
+                                      return (
+                                        <div key={i} className="rounded-lg border overflow-hidden">
+                                          <div className="relative w-full aspect-[4/3]">
+                                            <Image src={src} alt={`new-${i}`} fill className="object-cover" />
+                                            <div className="absolute top-2 left-2">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setEditItem((s) => {
+                                                    const cur = s[it._id];
+                                                    const nm = cur.newMeta.map((m, idx) => ({ ...m, isPrimary: idx === absoluteIndex }));
+                                                    // kasujemy primary w istniejących
+                                                    const imgs = cur.images.map((m) => ({ ...m, isPrimary: false }));
+                                                    return { ...s, [it._id]: { ...cur, images: imgs, newMeta: nm } };
+                                                  })
+                                                }
+                                                className={`px-2 py-1 text-xs rounded ${meta.isPrimary ? "bg-yellow-400/90" : "bg-white/80 border"}`}
+                                                title={meta.isPrimary ? "Zdjęcie główne" : "Ustaw jako główne"}
+                                              >
+                                                {meta.isPrimary ? <Star className="h-3.5 w-3.5" /> : <StarOff className="h-3.5 w-3.5" />}
+                                              </button>
+                                            </div>
+                                          </div>
+                                          <div className="p-2 space-y-1">
+                                            <input
+                                              value={meta.altPl ?? ""}
+                                              onChange={(e) =>
+                                                setEditItem((s) => {
+                                                  const cur = s[it._id];
+                                                  const nm = [...cur.newMeta];
+                                                  nm[i] = { ...nm[i], altPl: e.target.value };
+                                                  return { ...s, [it._id]: { ...cur, newMeta: nm } };
+                                                })
+                                              }
+                                              className="w-full rounded border px-2 py-1 text-xs"
+                                              placeholder="ALT (PL)"
+                                            />
+                                            <input
+                                              value={meta.altEn ?? ""}
+                                              onChange={(e) =>
+                                                setEditItem((s) => {
+                                                  const cur = s[it._id];
+                                                  const nm = [...cur.newMeta];
+                                                  nm[i] = { ...nm[i], altEn: e.target.value };
+                                                  return { ...s, [it._id]: { ...cur, newMeta: nm } };
+                                                })
+                                              }
+                                              className="w-full rounded border px-2 py-1 text-xs"
+                                              placeholder="ALT (EN)"
+                                            />
+                                            <button
+                                              type="button"
+                                              className="w-full rounded border px-2 py-1 text-xs hover:bg-red-50 text-red-600"
+                                              onClick={() =>
+                                                setEditItem((s) => {
+                                                  const cur = s[it._id];
+                                                  const nf = [...cur.newFiles];
+                                                  const np = [...cur.newPreviews];
+                                                  const nm = [...cur.newMeta];
+                                                  URL.revokeObjectURL(np[i]);
+                                                  nf.splice(i, 1);
+                                                  np.splice(i, 1);
+                                                  nm.splice(i, 1);
+                                                  nm.forEach((m, idx) => (m.order = cur.images.length + idx));
+                                                  return { ...s, [it._id]: { ...cur, newFiles: nf, newPreviews: np, newMeta: nm } };
+                                                })
+                                              }
+                                            >
+                                              Usuń
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
 
                               <div className="mt-2 flex flex-wrap gap-2">
