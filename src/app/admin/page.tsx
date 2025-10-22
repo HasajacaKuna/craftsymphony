@@ -235,14 +235,20 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
                         alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`}
                         fill
                         sizes="(max-width:1280px) 70vw, 800px"
-                        className="object-contain"
+                        className="object-cover object-center"
                       />
                       {/* znak wodny */}
-                      <div className="absolute left-2 bottom-2 opacity-80">
-                        <div className="relative h-8 w-8">
-                          <Image src="/images/znakwodny.png" alt="watermark" fill sizes="32px" className="object-contain pointer-events-none select-none" />
-                        </div>
-                      </div>
+<div className="absolute left-0 bottom-0 opacity-80">
+  <div className="relative h-16 w-16 overflow-hidden rounded-md">
+    <Image
+      src="/images/znakwodny.png"
+      alt="watermark"
+      fill
+      sizes="64px"
+      className="object-cover pointer-events-none select-none"
+    />
+  </div>
+</div>
                       {/* strzałki */}
                       {gallery.length > 1 && (
                         <>
@@ -387,12 +393,13 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
         </div>
 
         <div className="max-w-4xl mx-auto">
-          <div className="text-center text-sm text-neutral-600 mb-[-48px]">{hero?.upperSize ?? "—"}</div>
 
           {/* nagłówek: Rozmiary w cm / Sizes in cm */}
           <div className="text-center mt-14 mb-2">
             <span className="text-[12px] uppercase tracking-wide text-neutral-500">{UI_STRINGS[lang].sizesInCm}</span>
           </div>
+
+          <div className="text-center text-sm text-neutral-600 mb-[-48px]">{hero?.upperSize ?? "—"}</div>
 
           <div className="rounded-2xl overflow-visible">
             <div className="relative mx-auto w-2/3 md:w-1/3 aspect-[3/2]">
@@ -401,7 +408,7 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
               {/* LEWY bąbelek: sprzączka + podpis */}
               <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 left-0 -translate-x-[110%]">
                 <em className="text-xs text-neutral-500 not-italic italic">{UI_STRINGS[lang].buckleSize}</em>
-                <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/95 px-4 py-3 text-base font-medium shadow-sm min-w-[8rem] justify-center">
+                <div className="inline-flex items-center gap-2 rounded-xl  px-4 text-sm text-neutral-600 font-medium min-w-[8rem] justify-center">
                   {typeof hero?.buckleSize !== "undefined" && hero?.buckleSize !== null ? `${hero.buckleSize}` : "—"}
                 </div>
               </div>
@@ -409,7 +416,7 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
               {/* PRAWY bąbelek: rozmiar główny + podpis */}
               <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 right-0 translate-x-[110%]">
                 <em className="text-xs text-neutral-500 not-italic italic">{UI_STRINGS[lang].mainSize}</em>
-                <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/95 px-4 py-3 text-base font-medium shadow-sm min-w-[8rem] justify-center">
+                <div className="inline-flex items-center gap-2 rounded-xl  px-4 text-sm text-neutral-600 font-medium min-w-[8rem] justify-center">
                   {typeof hero?.mainSize !== "undefined" && hero?.mainSize !== null ? `${hero.mainSize}` : "—"}
                 </div>
               </div>
@@ -450,7 +457,7 @@ export default function AdminPage() {
     titleEn: "",
     description:
       "Pasek ze skóry licowej najlepszej jakości, wycinany, farbiony ręcznie. Brzegi skóry malowane, zabezpieczony lakierem. Stosowane farby są głęboko penetrujące a co za tym idzie, nie złuszczają się, nie pękają, nie farbią ubrań gdy są mokre. Długość paska od klamry do końca 120cm.",
-    descriptionEn: "",
+    descriptionEn: "A belt made of top-quality full-grain leather, hand-cut and hand-dyed. The edges are painted and sealed with varnish. The dyes used are deeply penetrating, which means they do not peel, crack, or stain clothing when wet. The length of the belt from the buckle to the tip is 120 cm.",
     rozmiarMin: "",
     rozmiarMax: "",
     rozmiarGlowny: "",
@@ -1082,7 +1089,7 @@ export default function AdminPage() {
 
         {/* PRZEDMIOTY */}
         <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm text-gray-800">
-          <h2 className="font-medium mb-4">Dodaj pasek (multi-zdjęcia + EN)</h2>
+          <h2 className="font-medium mb-4">Dodaj pasek</h2>
 
           <form onSubmit={submitItem} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1093,15 +1100,15 @@ export default function AdminPage() {
                 ))}
               </select>
               <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Tytuł (PL)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
-              <input value={form.titleEn} onChange={(e) => setForm({ ...form, titleEn: e.target.value })} placeholder="Title (EN)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" />
+              <input value={form.titleEn} onChange={(e) => setForm({ ...form, titleEn: e.target.value })} placeholder="Tytuł (EN)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Opis (PL)" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
-              <textarea value={form.descriptionEn} onChange={(e) => setForm({ ...form, descriptionEn: e.target.value })} placeholder="Description (EN)" className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
+              <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Opis (PL)" className="w-full h-[200px] rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
+              <textarea value={form.descriptionEn} onChange={(e) => setForm({ ...form, descriptionEn: e.target.value })} placeholder="Opis (EN)" className="w-full h-[200px]  rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <input type="number" value={form.rozmiarMin} onChange={(e) => setForm({ ...form, rozmiarMin: e.target.value })} placeholder="Rozmiar min (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
               <input type="number" value={form.rozmiarMax} onChange={(e) => setForm({ ...form, rozmiarMax: e.target.value })} placeholder="Rozmiar max (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
               <input
@@ -1114,7 +1121,7 @@ export default function AdminPage() {
               <input type="number" value={form.rozmiarGlowny} onChange={(e) => setForm({ ...form, rozmiarGlowny: e.target.value })} placeholder="Rozmiar główny (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <input type="number" value={form.cenaPLN} onChange={(e) => setForm({ ...form, cenaPLN: e.target.value })} placeholder="Cena (PLN)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
               <input type="number" value={form.numerPaska} onChange={(e) => setForm({ ...form, numerPaska: e.target.value })} placeholder="Nr paska" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
             </div>
@@ -1146,7 +1153,7 @@ export default function AdminPage() {
                   }}
                 />
                 <ImageIcon className="h-6 w-6" />
-                <span className="text-lg">Wrzuć zdjęcia (możesz wiele)</span>
+                <span className="text-lg">Wrzuć zdjęcia</span>
               </label>
 
               {/* Galeria draft */}
@@ -1174,18 +1181,6 @@ export default function AdminPage() {
                           </div>
                         </div>
                         <div className="p-2 space-y-1">
-                          <input
-                            value={meta.altPl ?? ""}
-                            onChange={(e) => setCreateImgMeta(i, { altPl: e.target.value })}
-                            className="w-full rounded border px-2 py-1 text-xs"
-                            placeholder="ALT (PL)"
-                          />
-                          <input
-                            value={meta.altEn ?? ""}
-                            onChange={(e) => setCreateImgMeta(i, { altEn: e.target.value })}
-                            className="w-full rounded border px-2 py-1 text-xs"
-                            placeholder="ALT (EN)"
-                          />
                           <button
                             type="button"
                             className="w-full rounded border px-2 py-1 text-xs hover:bg-red-50 text-red-600"
@@ -1373,32 +1368,7 @@ export default function AdminPage() {
                                         </div>
                                       </div>
                                       <div className="p-2 space-y-1">
-                                        <input
-                                          value={img.altPl ?? ""}
-                                          onChange={(e) =>
-                                            setEditItem((s) => {
-                                              const cur = s[it._id];
-                                              const imgs = [...cur.images];
-                                              imgs[i] = { ...imgs[i], altPl: e.target.value };
-                                              return { ...s, [it._id]: { ...cur, images: imgs } };
-                                            })
-                                          }
-                                          className="w-full rounded border px-2 py-1 text-xs"
-                                          placeholder="ALT (PL)"
-                                        />
-                                        <input
-                                          value={img.altEn ?? ""}
-                                          onChange={(e) =>
-                                            setEditItem((s) => {
-                                              const cur = s[it._id];
-                                              const imgs = [...cur.images];
-                                              imgs[i] = { ...imgs[i], altEn: e.target.value };
-                                              return { ...s, [it._id]: { ...cur, images: imgs } };
-                                            })
-                                          }
-                                          className="w-full rounded border px-2 py-1 text-xs"
-                                          placeholder="ALT (EN)"
-                                        />
+                                    
                                         <button
                                           type="button"
                                           className="w-full rounded border px-2 py-1 text-xs hover:bg-red-50 text-red-600"

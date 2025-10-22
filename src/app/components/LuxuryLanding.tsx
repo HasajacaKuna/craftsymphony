@@ -1,9 +1,7 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion, useSpring } from "framer-motion";
 import {
-  ChevronUp,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Facebook,
@@ -74,8 +72,6 @@ const UI_STRINGS: Record<
   {
     navLeather: string;
     navWood: string;
-    scrollUp: string;
-    scrollDown: string;
     selectBelt: string;
     heroAltPrefix: string;
     schemaAlt: string;
@@ -97,8 +93,6 @@ const UI_STRINGS: Record<
   pl: {
     navLeather: "Skóra",
     navWood: "Drewno",
-    scrollUp: "Przewiń w górę",
-    scrollDown: "Przewiń w dół",
     selectBelt: "Wybierz pasek nr",
     heroAltPrefix: "Pasek",
     schemaAlt: "Schemat paska – rozmiar",
@@ -121,8 +115,6 @@ const UI_STRINGS: Record<
   en: {
     navLeather: "Leather",
     navWood: "Wood",
-    scrollUp: "Scroll up",
-    scrollDown: "Scroll down",
     selectBelt: "Select belt no.",
     heroAltPrefix: "Belt",
     schemaAlt: "Belt diagram — size",
@@ -208,14 +200,10 @@ function CategorySection({
 }: CategoryData & { labels: Labels; lang: Lang }) {
   // HOOKI
   const [active, setActive] = useState(0);
-  const [scrollIndex, setScrollIndex] = useState(0);
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
-  // UI stałe
-  const VISIBLE = 4;
-  const THUMB_H = 96;
-  const GAP = 12;
+  // animacja (nie scrollujemy kolumny, ale zostawiamy sprężynę np. pod późniejsze efekty)
   const ySpring = useSpring(0, { stiffness: 120, damping: 20 });
 
   // Dane do galerii
@@ -224,32 +212,30 @@ function CategorySection({
   const categoryGallery = images?.length ? sortImages(images) : [];
   const gallery = beltGallery.length ? beltGallery : categoryGallery;
 
+  // ref do karuzeli miniaturek (desktop)
+const deskThumbsRef = useRef<HTMLDivElement | null>(null);
+
+const scrollDesktopThumbs = (dir: "left" | "right") => {
+  const el = deskThumbsRef.current;
+  if (!el) return;
+  const step = Math.round(el.clientWidth * 0.9); // ~90% szerokości kontenera
+  el.scrollBy({ left: dir === "left" ? -step : step, behavior: "smooth" });
+};
+
+
   // ALT wg języka
   const altFor = (img: BeltImage, fallback: string) =>
     (lang === "en" ? img.altEn || img.altPl : img.altPl || img.altEn) ||
     fallback;
 
-  // aktywna miniatura w kolumnie
-  useEffect(() => {
-    if (!gallery.length) return;
-    if (heroIndex < scrollIndex) setScrollIndex(heroIndex);
-    if (heroIndex > scrollIndex + VISIBLE - 1)
-      setScrollIndex(heroIndex - (VISIBLE - 1));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heroIndex, gallery.length]);
-
-  useEffect(() => {
-    if (!gallery.length) return;
-    ySpring.set(-(scrollIndex * (THUMB_H + GAP)));
-  }, [gallery.length, scrollIndex, ySpring]);
-
   // reset hero przy zmianie paska
   useEffect(() => {
     const p = pickPrimary(beltGallery);
     setHeroIndex(Math.max(0, beltGallery.indexOf(p ?? beltGallery[0])));
-  }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
-  // Swipe (mobile)
+  // Swipe (mobile) – zmiana aktywnego paska
   const onTouchStart = (e: React.TouchEvent) =>
     setTouchStartX(e.touches[0].clientX);
   const onTouchEnd = (e: React.TouchEvent) => {
@@ -265,10 +251,21 @@ function CategorySection({
     setTouchStartX(null);
   };
 
-  // Miniatury scroll (desktop)
-  const maxScrollIndex = Math.max(0, gallery.length - VISIBLE);
-  const scrollUp = () => setScrollIndex((s) => Math.max(0, s - 1));
-  const scrollDown = () => setScrollIndex((s) => Math.min(maxScrollIndex, s + 1));
+  // miniatury: bierzemy primary (albo fallback) każdego paska w kategorii
+  const beltThumbs = items
+    .map((it, i) => {
+      const p = pickPrimary(it.images || []);
+      const src = p?.url || categoryGallery[0]?.url || "";
+      return {
+        url: src,
+        beltNo: it.beltNo ?? i + 1,
+        alt:
+          (lang === "en"
+            ? it.nameEn || it.name || `${labels.heroAltPrefix} ${i + 1}`
+            : it.name || it.nameEn || `${labels.heroAltPrefix} ${i + 1}`) || "",
+      };
+    })
+    .filter((t) => !!t.url);
 
   if (!items.length || !gallery.length) return null;
 
@@ -296,138 +293,13 @@ function CategorySection({
         </h1>
       </div>
 
-      {/* HERO + MINIATURY OBOK (desktop) */}
+      {/* HERO */}
       <div className="relative">
-        <div className="hidden md:grid grid-cols-[1fr_auto] gap-4 items-start">
-          {/* HERO pionowy */}
-          <div className="relative w-full">
-            <div className="relative w-full aspect-[3/4] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={`hero-${title}-${active}-${heroImg?.url ?? "noimg"}`}
-                  initial={{ opacity: 0, scale: 1.01 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.995 }}
-                  transition={{ duration: 0.35, ease: "easeOut" }}
-                  className="relative h-full w-full"
-                  onTouchStart={onTouchStart}
-                  onTouchEnd={onTouchEnd}
-                >
-                  {heroImg ? (
-                    <>
-                      <Image
-                        src={heroImg.url}
-                        alt={altFor(
-                          heroImg,
-                          `${labels.heroAltPrefix} ${belt?.beltNo ?? (displayName ?? `${active + 1}`)}`
-                        )}
-                        fill
-                        sizes="(max-width:1280px) 70vw, 800px"
-                        className="object-contain"
-                        priority={false}
-                      />
-                      {/* znak wodny w lewym dolnym rogu */}
-                      <div className="absolute left-2 bottom-2 opacity-80">
-                        <div className="relative h-8 w-8">
-                          <Image
-                            src="/images/znakwodny.png"
-                            alt="watermark"
-                            fill
-                            sizes="32px"
-                            className="object-contain pointer-events-none select-none"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Strzałki na obrazie */}
-                      <button
-                        onClick={goPrev}
-                        className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
-                        aria-label="Poprzednie zdjęcie"
-                      >
-                        <ChevronLeft className="h-6 w-6" />
-                      </button>
-                      <button
-                        onClick={goNext}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
-                        aria-label="Następne zdjęcie"
-                      >
-                        <ChevronRight className="h-6 w-6" />
-                      </button>
-                    </>
-                  ) : (
-                    <div className="absolute inset-0 grid place-items-center text-neutral-500">
-                      Brak zdjęcia
-                    </div>
-                  )}
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          </div>
-
-          {/* MINIATURY – osobna kolumna po prawej, poza obrazem */}
-          {gallery.length > 1 && (
-            <div className="sticky top-24 self-start">
-              <div className="flex flex-col items-center gap-3">
-                <button
-                  onClick={scrollUp}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300 bg-white hover:bg-neutral-50"
-                  aria-label={labels.scrollUp}
-                >
-                  <ChevronUp className="h-5 w-5" />
-                </button>
-
-                <div className="relative h-[calc(4*96px+3*12px)] w-28 overflow-hidden rounded-xl border border-neutral-200 bg-white">
-                  <motion.div
-                    style={{ y: ySpring }}
-                    className="absolute top-0 left-0 w-full"
-                  >
-                    <div className="flex flex-col gap-3 p-2">
-                      {gallery.map((img, i) => (
-                        <button
-                          key={img.url + i}
-                          onClick={() => setHeroIndex(i)}
-                          className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${
-                            i === heroIndex
-                              ? "border-neutral-900 shadow"
-                              : "border-neutral-300 hover:border-neutral-500"
-                          }`}
-                          aria-label={`${labels.selectBelt} ${i + 1}`}
-                          title={`Podgląd ${i + 1}`}
-                        >
-                          <div className="relative h-24 w-full">
-                            <Image
-                              src={img.url}
-                              alt={altFor(img, `thumb-${i + 1}`)}
-                              fill
-                              sizes="112px"
-                              className="object-cover rounded-lg"
-                            />
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                </div>
-
-                <button
-                  onClick={scrollDown}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300 bg-white hover:bg-neutral-50"
-                  aria-label={labels.scrollDown}
-                >
-                  <ChevronDown className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* MOBILE: hero + miniatury pod spodem */}
-        <div className="md:hidden">
+        <div className="relative w-full">
           <div className="relative w-full aspect-[3/4] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100">
             <AnimatePresence mode="wait">
               <motion.div
-                key={`m-hero-${title}-${active}-${heroImg?.url ?? "noimg"}`}
+                key={`hero-${title}-${active}-${heroImg?.url ?? "noimg"}`}
                 initial={{ opacity: 0, scale: 1.01 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.995 }}
@@ -442,38 +314,44 @@ function CategorySection({
                       src={heroImg.url}
                       alt={altFor(
                         heroImg,
-                        `${labels.heroAltPrefix} ${belt?.beltNo ?? (displayName ?? `${active + 1}`)}`
+                        `${labels.heroAltPrefix} ${
+                          belt?.beltNo ?? displayName ?? `${active + 1}`
+                        }`
                       )}
                       fill
-                      sizes="100vw"
-                      className="object-contain"
+                      sizes="(max-width:1280px) 90vw, 900px"
+                      className="object-cover object-center"
+                      priority={false}
                     />
-                    {/* watermark */}
-                    <div className="absolute left-2 bottom-2 opacity-80">
-                      <div className="relative h-7 w-7">
-                        <Image
-                          src="/images/znakwodny.png"
-                          alt="watermark"
-                          fill
-                          sizes="28px"
-                          className="object-contain pointer-events-none select-none"
-                        />
-                      </div>
-                    </div>
-                    {/* strzałki */}
+                    {/* znak wodny w lewym dolnym rogu */}
+{/* znak wodny w lewym dolnym rogu */}
+<div className="absolute left-0 bottom-0 opacity-80">
+  <div className="relative h-16 w-16 overflow-hidden rounded-md">
+    <Image
+      src="/images/znakwodny.png"
+      alt="watermark"
+      fill
+      sizes="64px"
+      className="object-contain pointer-events-none select-none"
+    />
+  </div>
+</div>
+
+
+                    {/* Strzałki na obrazie */}
                     <button
                       onClick={goPrev}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+                      className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
                       aria-label="Poprzednie zdjęcie"
                     >
-                      <ChevronLeft className="h-5 w-5" />
+                      <ChevronLeft className="h-6 w-6" />
                     </button>
                     <button
                       onClick={goNext}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
                       aria-label="Następne zdjęcie"
                     >
-                      <ChevronRight className="h-5 w-5" />
+                      <ChevronRight className="h-6 w-6" />
                     </button>
                   </>
                 ) : (
@@ -484,36 +362,111 @@ function CategorySection({
               </motion.div>
             </AnimatePresence>
           </div>
-
-          {gallery.length > 1 && (
-            <div className="mt-3">
-              <div className="flex gap-3 overflow-x-auto px-1 py-1 snap-x snap-mandatory">
-                {gallery.map((img, i) => (
-                  <button
-                    key={`m-thumb-${img.url}-${i}`}
-                    onClick={() => setHeroIndex(i)}
-                    className={`relative h-20 w-20 flex-none overflow-hidden rounded-lg border snap-start ${
-                      i === heroIndex
-                        ? "border-neutral-900 ring-2 ring-neutral-900"
-                        : "border-neutral-300 hover:border-neutral-500"
-                    }`}
-                    aria-label={`${labels.selectBelt} ${i + 1}`}
-                  >
-                    <div className="relative h-20 w-20">
-                      <Image
-                        src={img.url}
-                        alt={altFor(img, `thumb-${i + 1}`)}
-                        fill
-                        sizes="80px"
-                        className="object-cover rounded-lg"
-                      />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* MINIATURKI POD HERO */}
+        {/* Mobile: duże kwadraty, poziomy scroll na całą szerokość */}
+        {beltThumbs.length > 1 && (
+          <div className="md:hidden mt-3">
+            <div className="flex gap-3 overflow-x-auto px-1 py-1 snap-x snap-mandatory">
+              {beltThumbs.map((thumb, i) => (
+                <button
+                  key={`m-thumb-${thumb.url}-${i}`}
+                  onClick={() => setActive(i)}
+                  className={`relative h-24 w-24 flex-none overflow-hidden rounded-lg border snap-start ${
+                    i === active
+                      ? "border-neutral-900 ring-2 ring-neutral-900"
+                      : "border-neutral-300 hover:border-neutral-500"
+                  }`}
+                  aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
+                  title={`Pasek ${thumb.beltNo}`}
+                >
+                  <div className="relative h-24 w-24">
+                    <Image
+                      src={thumb.url}
+                      alt={thumb.alt}
+                      fill
+                      sizes="96px"
+                      className="object-cover rounded-lg"
+                    />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+{/* Desktop: karuzela miniaturek pod hero */}
+{beltThumbs.length > 1 && (
+  <div className="hidden md:block mt-4 relative">
+    {/* przyciski przewijania */}
+<button
+  type="button"
+  aria-label="Przewiń w lewo"
+  onClick={() => scrollDesktopThumbs("left")}
+  className="
+    absolute left-[-2.75rem] top-1/2 -translate-y-1/2 z-10
+    hidden lg:flex h-10 w-10 items-center justify-center
+    text-gray-800 hover:text-gray-900
+    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
+  "
+>
+  <ChevronLeft className="h-7 w-7" />
+</button>
+
+    <div
+      ref={deskThumbsRef}
+      className="
+    relative overflow-x-auto
+    [scrollbar-width:none]           /* Firefox */
+    [-ms-overflow-style:none]        /* IE/Edge */
+    [&::-webkit-scrollbar]:hidden    /* Chrome/Safari/Opera */
+  "
+    >
+      <div className="flex gap-3 px-1 py-1">
+        {beltThumbs.map((thumb, i) => (
+          <button
+            key={`d-thumb-${thumb.url}-${i}`}
+            onClick={() => setActive(i)}
+            className={`relative aspect-square h-28 lg:h-32 flex-none overflow-hidden rounded-lg border transition ${
+              i === active
+                ? "border-neutral-500 ring-2 ring-neutral-500"
+                : "border-neutral-300 hover:border-neutral-500"
+            }`}
+            aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
+            title={`Pasek ${thumb.beltNo}`}
+          >
+            <div className="relative h-full w-full">
+              <Image
+                src={thumb.url}
+                alt={thumb.alt}
+                fill
+                sizes="(max-width:1280px) 120px, 160px"
+                className="object-cover rounded-lg"
+              />
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+
+{/* przycisk w prawo – na zewnątrz, bez tła */}
+<button
+  type="button"
+  aria-label="Przewiń w prawo"
+  onClick={() => scrollDesktopThumbs("right")}
+  className="
+    absolute right-[-2.75rem] top-1/2 -translate-y-1/2 z-10
+    hidden lg:flex h-10 w-10 items-center justify-center
+    text-gray-800 hover:text-gray-900
+    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
+  "
+>
+  <ChevronRight className="h-7 w-7" />
+</button>
+  </div>
+)}
+
       </div>
 
       {/* OPIS + ROZMIARÓWKA */}
@@ -525,66 +478,84 @@ function CategorySection({
             {displayName ?? "—"}
           </h3>
 
-          <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">
+        <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">
             {displayDesc ?? "—"}
           </p>
         </div>
 
         {/* Rozmiary */}
-        <div className="max-w-4xl mx-auto">
-          {/* górny rozmiar */}
-          <div className="text-center text-sm text-neutral-600 mb-[-48px]">
-            {belt?.upperSize ?? "—"}
-          </div>
+        {/* Rozmiary */}
+<div className="max-w-4xl mx-auto">
+  {/* górny rozmiar */}
 
-          {/* nagłówek: Rozmiary w cm */}
-          <div className="text-center mt-14 mb-2">
-            <span className="text-[12px] uppercase tracking-wide text-neutral-500">
-              {UI_STRINGS[lang].sizesInCm}
-            </span>
-          </div>
 
-          <div className="rounded-2xl overflow-visible">
-            <div className="relative mx-auto w-2/3 md:w-1/3 aspect-[3/2]">
-              <Image
-                src="/images/belt2.png"
-                alt={labels.schemaAlt}
-                fill
-                sizes="(max-width:768px) 66vw, 33vw"
-                className="object-contain"
-              />
+  {/* nagłówek: Rozmiary w cm */}
+  <div className="text-center mt-2 sm:mt-14 mb-1 sm:mb-2">
+    <span className="text-[11px] sm:text-[12px] uppercase tracking-wide text-neutral-500">
+      {UI_STRINGS[lang].sizesInCm}
+    </span>
+  </div>
+  <div className="text-center text-xs sm:text-sm text-neutral-600 mb-2 mb-[-48px]">
+    {belt?.upperSize ?? "—"}
+  </div>
+  {/* Schemat */}
+  <div className="rounded-2xl overflow-visible">
+    <div className="relative mx-auto w-full max-w-xs sm:max-w-[40%] aspect-[3/2]">
+      <Image
+        src="/images/belt2.png"
+        alt={labels.schemaAlt}
+        fill
+        sizes="(max-width:768px) 90vw, 40vw"
+        className="object-contain"
+      />
 
-              {/* LEWY bąbelek: sprzączka */}
-              <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 left-0 -translate-x-[110%]">
-                <em className="text-xs text-neutral-500 not-italic italic">
-                  {UI_STRINGS[lang].buckleSize}
-                </em>
-                <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/95 px-4 py-3 text-base font-medium shadow-sm min-w-[8rem] justify-center">
-                  {typeof belt?.buckleSize !== "undefined" && belt?.buckleSize !== null
-                    ? `${belt.buckleSize}`
-                    : "—"}
-                </div>
-              </div>
-
-              {/* PRAWY bąbelek: rozmiar główny */}
-              <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 right-0 translate-x-[110%]">
-                <em className="text-xs text-neutral-500 not-italic italic">
-                  {UI_STRINGS[lang].mainSize}
-                </em>
-                <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/95 px-4 py-3 text-base font-medium shadow-sm min-w-[8rem] justify-center">
-                  {typeof belt?.mainSize !== "undefined" && belt?.mainSize !== null
-                    ? `${belt.mainSize}`
-                    : "—"}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* dolny rozmiar */}
-          <div className="text-center text-sm text-neutral-600 mt-[-48px]">
-            {belt?.lowerSize ?? "—"}
-          </div>
+      {/* BĄBELKI TYLKO NA DESKTOPIE (po bokach schematu) */}
+      <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 left-0 -translate-x-[110%]">
+        <em className="text-xs text-neutral-500 not-italic italic">
+          {UI_STRINGS[lang].buckleSize}
+        </em>
+        <div className="inline-flex items-center gap-2 rounded-xl text-sm text-neutral-600 px-4  font-medium shadow-sm min-w-[8rem] justify-center">
+          {typeof belt?.buckleSize !== "undefined" && belt?.buckleSize !== null ? `${belt.buckleSize}` : "—"}
         </div>
+      </div>
+
+      <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 right-0 translate-x-[110%]">
+        <em className="text-xs text-neutral-500 not-italic italic">
+          {UI_STRINGS[lang].mainSize}
+        </em>
+        <div className="inline-flex items-center gap-2 rounded-xl text-sm text-neutral-600 px-4  font-medium shadow-sm min-w-[8rem] justify-center">
+          {typeof belt?.mainSize !== "undefined" && belt?.mainSize !== null ? `${belt.mainSize}` : "—"}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* dolny rozmiar */}
+  <div className="text-center text-xs sm:text-sm text-neutral-600 mt-2 mt-[-48px]">
+    {belt?.lowerSize ?? "—"}
+  </div>
+
+  {/* BĄBELKI NA MOBILE (pod schematem, małe i ciasne) */}
+  <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden px-2">
+    <div className="rounded-2xl  px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-sm text-neutral-600 text-center whitespace-nowrap">
+        {UI_STRINGS[lang].buckleSize}
+      </div>
+      <div className="text-center text-sm font-medium leading-tight truncate">
+        {typeof belt?.buckleSize !== "undefined" && belt?.buckleSize !== null ? `${belt.buckleSize}` : "—"}
+      </div>
+    </div>
+    <div className="rounded-2xl  px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-sm text-neutral-600 text-center whitespace-nowrap">
+        {UI_STRINGS[lang].mainSize}
+      </div>
+      <div className="text-center text-sm font-medium leading-tight truncate">
+        {typeof belt?.mainSize !== "undefined" && belt?.mainSize !== null ? `${belt.mainSize}` : "—"}
+      </div>
+    </div>
+  </div>
+</div>
+
 
         <p className="mt-8 text-center text-[13px] text-neutral-600 mb-16 italic">
           {labels.price}{" "}
@@ -600,7 +571,7 @@ function CategorySection({
 /* ===== Główny komponent – TYLKO dane z bazy ===== */
 export default function LuxuryLanding({
   logo = "/images/logo3.png",
-  aboutImage = "/images/1.png",
+  aboutImage = "/images/3.png",
   defaultLang = "pl",
 }: {
   logo?: string;
@@ -640,9 +611,11 @@ export default function LuxuryLanding({
         const res = await fetch("/api/catalog", { cache: "no-store" });
         const json: CatalogResponse = await res.json();
 
-        const normalized: CategoryData[] =
-          (json?.categories ?? []).map((cat) => {
-            const catImages = toImageObjects(cat.images as (string | BeltImage)[]);
+        const normalized: CategoryData[] = (json?.categories ?? []).map(
+          (cat) => {
+            const catImages = toImageObjects(
+              cat.images as (string | BeltImage)[]
+            );
 
             const items: BeltItem[] = (cat.items ?? []).map((it) => {
               const min = Number(it.rozmiarMin);
@@ -687,7 +660,8 @@ export default function LuxuryLanding({
               images: catImages,
               items,
             };
-          });
+          }
+        );
 
         if (!abort) setData(normalized);
       } catch {
@@ -709,6 +683,11 @@ export default function LuxuryLanding({
     return (c.items?.length || 0) > 0 && (anyWithImages || categoryImages);
   };
 
+const navLink =
+  "relative text-[12px] md:text-[13px] uppercase font-serif text-neutral-800 hover:text-neutral-950 transition " +
+  "after:absolute after:-bottom-1 after:h-[1px] after:w-0 after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full " +
+  "focus:outline-none focus-visible:after:w-full";
+
   return (
     <div className="min-h-screen bg-[#f5f5ef] text-neutral-900 selection:bg-neutral-900 selection:text-white">
       {/* NAVBAR */}
@@ -720,16 +699,8 @@ export default function LuxuryLanding({
             {/* Środek */}
             <div className="justify-self-center">
               <div className="flex items-center gap-6 md:gap-8">
-                <Link
-                  href="/"
-                  className="relative text-[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
-                       hover:text-neutral-950 transition
-                       after:absolute after:left-0 after:-bottom-1 after:h-[1px] after:w-0
-                       after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full
-                       focus:outline-none focus-visible:after:w-full"
-                >
-                  {t.navLeather}
-                </Link>
+          <Link href="/" className={`${navLink} after:left-0`}>{t.navLeather}</Link>
+
 
                 <div className="relative h-14 w-14 md:h-20 md:w-20 shrink-0">
                   <Image
@@ -741,22 +712,21 @@ export default function LuxuryLanding({
                   />
                 </div>
 
-                <Link
-                  href="/"
-                  className="relative text:[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800
-                       hover:text-neutral-950 transition
-                       after:absolute after:right-0 after:-bottom-1 after:h-[1px] after:w-0
-                       after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full
-                       focus:outline-none focus-visible:after:w-full"
-                >
-                  {t.navWood}
-                </Link>
+                <Link href="/wood" className={`${navLink} after:right-0`}>{t.navWood}</Link>
+
+
+
+
+
+
+
               </div>
             </div>
 
-            {/* Prawa: języki */}
-            <div className="justify-self-end">
+            {/* DESKTOP/TABLET: języki po prawej */}
+            <div className="justify-self-end hidden sm:block">
               <div className="flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/80 backdrop-blur px-1.5 py-1 shadow-sm">
+                {/* PL */}
                 <button
                   onClick={() => setLang("pl")}
                   aria-pressed={lang === "pl"}
@@ -775,7 +745,7 @@ export default function LuxuryLanding({
                   />
                   <span className="sr-only">PL</span>
                 </button>
-
+                {/* EN */}
                 <button
                   onClick={() => setLang("en")}
                   aria-pressed={lang === "en"}
@@ -797,11 +767,55 @@ export default function LuxuryLanding({
               </div>
             </div>
           </div>
+
+          {/* MOBILE: pływające flagi w prawym górnym rogu */}
+{/* MOBILE: pasek flag pod navbarem (fixed) */}
+<div className="sm:hidden fixed top-16 inset-x-0 z-40">
+  <div className="mx-auto max-w-6xl px-4 py-2 flex items-center justify-end gap-1.5">
+    <button
+      onClick={() => setLang("pl")}
+      aria-pressed={lang === "pl"}
+      aria-label="Polski"
+      title="Polski"
+      className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors ${
+        lang === "pl" ? "bg-[#eaeae2]" : "hover:bg-neutral-100"
+      }`}
+    >
+      <Image
+        src="/images/poland.png"
+        alt=""
+        width={20}
+        height={14}
+        className="rounded-[2px] shadow-sm"
+      />
+      <span className="sr-only">PL</span>
+    </button>
+    <button
+      onClick={() => setLang("en")}
+      aria-pressed={lang === "en"}
+      aria-label="English"
+      title="English"
+      className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors ${
+        lang === "en" ? "bg-[#eaeae2]" : "hover:bg-neutral-100"
+      }`}
+    >
+      <Image
+        src="/images/england.png"
+        alt=""
+        width={20}
+        height={14}
+        className="rounded-[2px] shadow-sm"
+      />
+      <span className="sr-only">EN</span>
+    </button>
+  </div>
+</div>
+
         </div>
       </header>
 
       {/* MAIN */}
-      <main className="pt-20 md:pt-24 pb-24">
+      <main className="pt-[5.75rem] md:pt-24 pb-24">
         <section className="mx-auto max-w-6xl px-4 space-y-16 md:space-y-24">
           {/* LOADING */}
           {loading && (
@@ -833,11 +847,42 @@ export default function LuxuryLanding({
             </div>
           )}
 
-          {/* O rzemiośle */}
+          {/* O rzemiośle + formularz */}
           <div className="mt-4 md:mt-6 text-center">
-            <p className="mt-4 md:mt-6 max-w-3xl mx-auto text-sm leading-relaxed text-neutral-700 px-2 italic">
-              {t.about}
-            </p>
+            {/* Formularz */}
+            <div className="mt-12 md:mt-16 text-center">
+              <h3 className="font-serif text-lg md:text-xl tracking-wide">
+                {t.interestedHeading}
+              </h3>
+              <p className="mt-2 text-sm text-neutral-600 px-2">
+                {t.interestedText}
+              </p>
+
+              <form
+                onSubmit={(e) => e.preventDefault()}
+                className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
+              >
+                <input
+                  type="email"
+                  required
+                  placeholder={t.emailPlaceholder}
+                  className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={9999}
+                  placeholder={t.beltNoPlaceholder}
+                  className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+                  aria-label={t.beltNoPlaceholder}
+                />
+                <button className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-900 hover:text-white transition">
+                  {t.submit}
+                </button>
+              </form>
+            </div>
+
+            {/* Obraz o rzemiośle */}
             <div className="relative mx-auto h-64 md:h-[31rem] w-full max-w-3xl">
               <Image
                 src={aboutImage}
@@ -847,39 +892,10 @@ export default function LuxuryLanding({
                 className="object-contain"
               />
             </div>
-          </div>
 
-          {/* Formularz */}
-          <div className="mt-12 md:mt-16 text-center">
-            <h3 className="font-serif text-lg md:text-xl tracking-wide">
-              {t.interestedHeading}
-            </h3>
-            <p className="mt-2 text-sm text-neutral-600 px-2">
-              {t.interestedText}
+            <p className="mt-4 md:mt-[-6] max-w-3xl mx-auto text-sm leading-relaxed text-neutral-700 px-2 italic">
+              {t.about}
             </p>
-
-            <form
-              onSubmit={(e) => e.preventDefault()}
-              className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
-            >
-              <input
-                type="email"
-                required
-                placeholder={t.emailPlaceholder}
-                className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-              />
-              <input
-                type="number"
-                min={1}
-                max={9999}
-                placeholder={t.beltNoPlaceholder}
-                className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-                aria-label={t.beltNoPlaceholder}
-              />
-              <button className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-900 hover:text-white transition">
-                {t.submit}
-              </button>
-            </form>
           </div>
 
           {/* Stopka */}
