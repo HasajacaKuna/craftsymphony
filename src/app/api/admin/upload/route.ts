@@ -12,7 +12,7 @@ const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp", "gif"] as const;
 type AllowedExt = typeof ALLOWED_EXT[number];
 
 const RAW_MAX_MB = Number.parseFloat(process.env.MAX_UPLOAD_MB ?? "");
-const MAX_MB = Number.isFinite(RAW_MAX_MB) ? RAW_MAX_MB : 15;
+const MAX_MB = Number.isFinite(RAW_MAX_MB) ? RAW_MAX_MB : 300;
 
 // Normalizujemy typ MIME → rozszerzenie (jpeg → jpg)
 function extFromMime(mime: string): AllowedExt | null {
