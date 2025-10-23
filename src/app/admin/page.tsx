@@ -456,8 +456,8 @@ export default function AdminPage() {
     title: "",
     titleEn: "",
     description:
-      "Pasek ze skóry licowej najlepszej jakości, wycinany, farbiony ręcznie. Brzegi skóry malowane, zabezpieczony lakierem. Stosowane farby są głęboko penetrujące a co za tym idzie, nie złuszczają się, nie pękają, nie farbią ubrań gdy są mokre. Długość paska od klamry do końca 120cm.",
-    descriptionEn: "A belt made of top-quality full-grain leather, hand-cut and hand-dyed. The edges are painted and sealed with varnish. The dyes used are deeply penetrating, which means they do not peel, crack, or stain clothing when wet. The length of the belt from the buckle to the tip is 120 cm.",
+      "Pasek ze skóry licowej najlepszej jakości, wycinany, farbiony ręcznie. Brzegi skóry malowane, zabezpieczony lakierem. Stosowane farby są głęboko penetrujące a co za tym idzie, nie złuszczają się, nie pękają, nie farbią ubrań gdy są mokre. Wszystkie paski są pakowane do ozdobnych pudełek drewnianych z logiem firmy. Wewnątrz pokryte miekką wykładziną.",
+    descriptionEn: "A belt made of top-quality full-grain leather, hand-cut and hand-dyed. The edges are painted and sealed with lacquer. The dyes used are deeply penetrating, which means they do not peel, crack, or stain clothing when wet. All belts are packaged in decorative wooden boxes with the company logo, lined with soft fabric on the inside.",
     rozmiarMin: "",
     rozmiarMax: "",
     rozmiarGlowny: "",
