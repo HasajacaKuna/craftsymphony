@@ -21,7 +21,7 @@ export default function Navbar({
         {/* Pasek (większy – większe logo) */}
         <div className="relative h-20 md:h-24">
           {/* Siatka 3 kolumny: [lewy link | LOGO | prawy link] */}
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center h-full gap-4">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center h-full gap-6">
             {/* LEWY: słowo, zawsze dosunięte do LOGO */}
             <nav className="justify-self-end">
               <Link
@@ -33,7 +33,7 @@ export default function Navbar({
             </nav>
 
             {/* ŚRODEK: LOGO – absolutnie środkiem strony, niezależnie od długości słów */}
-            <div className="relative h-12 w-12 md:h-16 md:w-16 select-none justify-self-center">
+            <div className="relative h-12 w-12 md:h-24 md:w-24 select-none justify-self-center">
               <Image
                 src={logo}
                 alt="Craft Symphony"
