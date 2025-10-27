@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { AnimatePresence, motion, useSpring } from "framer-motion";
+import { motion, useSpring } from "framer-motion";
 import {
   ChevronLeft,
   ChevronRight,
@@ -105,8 +105,8 @@ const UI_STRINGS: Record<
     beltNoPlaceholder: "Nr paska",
     submit: "Wyślij zapytanie",
     price: "Cena:",
-   mainSize: "Długość paska",
-   buckleSize: "Szerokość klamry",
+    mainSize: "Długość paska",
+    buckleSize: "Szerokość klamry",
     sizesInCm: "Rozmiary w cm",
     about:
       "Każdy pasek powstaje w całości ręcznie – od doboru skóry, przez cięcie i barwienie, po wykończenie krawędzi. Wierzymy w rzemiosło, które ma duszę: staranność detalu i ponadczasowy charakter. Nasze paski łączą tradycję z nowoczesną precyzją — projektowane z myślą o trwałości i pięknie, które dojrzewa z czasem.",
@@ -127,8 +127,8 @@ const UI_STRINGS: Record<
     beltNoPlaceholder: "Belt no.",
     submit: "Send request",
     price: "Price:",
-   mainSize: "Belt length",
-   buckleSize: "Buckle width",
+    mainSize: "Belt length",
+    buckleSize: "Buckle width",
     sizesInCm: "Sizes in cm",
     about:
       "Each belt is crafted entirely by hand — from leather selection and cutting to dyeing and edge finishing. We believe in soul-filled craftsmanship: meticulous detail and timeless character. Our belts blend tradition with modern precision, designed for durability and beauty that matures over time.",
@@ -200,11 +200,17 @@ function CategorySection({
   lang,
 }: CategoryData & { labels: Labels; lang: Lang }) {
   // HOOKI
+
+  
   const [active, setActive] = useState(0);
   const [heroIndex, setHeroIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
-  // animacja (nie scrollujemy kolumny, ale zostawiamy sprężynę np. pod późniejsze efekty)
+  // do crossfade
+  const [prevUrl, setPrevUrl] = useState<string | null>(null);
+  const [nextLoaded, setNextLoaded] = useState(false);
+
+  // animacja (placeholder pod przyszłe efekty)
   const ySpring = useSpring(0, { stiffness: 120, damping: 20 });
 
   // Dane do galerii
@@ -214,25 +220,27 @@ function CategorySection({
   const gallery = beltGallery.length ? beltGallery : categoryGallery;
 
   // ref do karuzeli miniaturek (desktop)
-const deskThumbsRef = useRef<HTMLDivElement | null>(null);
+  const deskThumbsRef = useRef<HTMLDivElement | null>(null);
 
-const scrollDesktopThumbs = (dir: "left" | "right") => {
-  const el = deskThumbsRef.current;
-  if (!el) return;
-  const step = Math.round(el.clientWidth * 0.9); // ~90% szerokości kontenera
-  el.scrollBy({ left: dir === "left" ? -step : step, behavior: "smooth" });
-};
-
+  const scrollDesktopThumbs = (dir: "left" | "right") => {
+    const el = deskThumbsRef.current;
+    if (!el) return;
+    const step = Math.round(el.clientWidth * 0.9);
+    el.scrollBy({ left: dir === "left" ? -step : step, behavior: "smooth" });
+  };
 
   // ALT wg języka
   const altFor = (img: BeltImage, fallback: string) =>
     (lang === "en" ? img.altEn || img.altPl : img.altPl || img.altEn) ||
     fallback;
 
-  // reset hero przy zmianie paska
+  // reset hero przy zmianie paska — wybierz primary nowego paska
   useEffect(() => {
     const p = pickPrimary(beltGallery);
     setHeroIndex(Math.max(0, beltGallery.indexOf(p ?? beltGallery[0])));
+    // gdy zmienia się pasek, włącz crossfade ze starego kadru
+    setPrevUrl((u) => u ?? gallery[heroIndex]?.url ?? null);
+    setNextLoaded(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
@@ -244,6 +252,8 @@ const scrollDesktopThumbs = (dir: "left" | "right") => {
     const dx = e.changedTouches[0].clientX - touchStartX;
     const THRESHOLD = 40;
     if (Math.abs(dx) > THRESHOLD) {
+      setPrevUrl(gallery[heroIndex]?.url ?? null);
+      setNextLoaded(false);
       setActive((prev) => {
         const next = prev + (dx < 0 ? 1 : -1);
         return Math.max(0, Math.min(items.length - 1, next));
@@ -252,7 +262,7 @@ const scrollDesktopThumbs = (dir: "left" | "right") => {
     setTouchStartX(null);
   };
 
-  // miniatury: bierzemy primary (albo fallback) każdego paska w kategorii
+  // miniatury: primary (albo fallback) każdego paska
   const beltThumbs = items
     .map((it, i) => {
       const p = pickPrimary(it.images || []);
@@ -271,25 +281,37 @@ const scrollDesktopThumbs = (dir: "left" | "right") => {
   if (!items.length || !gallery.length) return null;
 
   const displayName =
-    lang === "en" && belt?.nameEn ? belt.nameEn : belt?.name;
+    (lang === "en" && belt?.nameEn ? belt.nameEn : belt?.name) ?? "";
   const displayDesc =
-    lang === "en" && belt?.descriptionEn
+    (lang === "en" && belt?.descriptionEn
       ? belt.descriptionEn
-      : belt?.description;
+      : belt?.description) ?? "—";
 
   const heroImg = gallery[heroIndex] ?? gallery[0];
 
-  // zmiana zdjęcia strzałkami
-  const goPrev = () =>
-    setHeroIndex((i) => (i > 0 ? i - 1 : gallery.length - 1));
-  const goNext = () =>
-    setHeroIndex((i) => (i < gallery.length - 1 ? i + 1 : 0));
+  // helper do płynnej zmiany zdjęcia w tej samej galerii
+  const setHeroSafely = (updater: (i: number) => number) => {
+    setPrevUrl(gallery[heroIndex]?.url ?? null);
+    setNextLoaded(false);
+    setHeroIndex(updater);
+  };
+
+  // strzałki
+  const goPrev = () => setHeroSafely((i) => (i > 0 ? i - 1 : gallery.length - 1));
+  const goNext = () => setHeroSafely((i) => (i < gallery.length - 1 ? i + 1 : 0));
+
+  // klik na miniaturze (desktop/mobile)
+  const handleSelectActive = (i: number) => {
+    setPrevUrl(gallery[heroIndex]?.url ?? null);
+    setNextLoaded(false);
+    setActive(i);
+  };
 
   return (
     <div>
       {/* Tytuł kategorii */}
       <div className="mb-6 text-center">
-        <h1 className="font-serif text-2xl md:text-3xl tracking-wide">
+        <h1 className="font-serif text-base sm:text-lg md:text-3xl tracking-normal sm:tracking-wide">
           Craft Symphony - {title}
         </h1>
       </div>
@@ -297,83 +319,106 @@ const scrollDesktopThumbs = (dir: "left" | "right") => {
       {/* HERO */}
       <div className="relative">
         <div className="relative w-full">
-          <div className="relative w-1/2 aspect-[3/4] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100 mx-auto">
-            <AnimatePresence mode="wait">
+          {/* Portretowy kadr (bez mignięć; crossfade) */}
+          <div className="relative w-full md:w-1/2 aspect-[3/4] max-h-[60vh] md:max-h-none overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100 mx-auto">
+            <div
+              className="absolute inset-0"
+              onTouchStart={onTouchStart}
+              onTouchEnd={onTouchEnd}
+            >
+              {/* Poprzedni kadr – znika dopiero gdy nowe się załaduje */}
+              {prevUrl && (
+                <motion.div
+                  initial={{ opacity: 1 }}
+                  animate={{ opacity: nextLoaded ? 0 : 1 }}
+                  transition={{ duration: 0.35, ease: "easeOut" }}
+                  className="absolute inset-0 will-change-[opacity]"
+                >
+                  <Image
+                    src={prevUrl}
+                    alt=""
+                    fill
+                    sizes="(max-width: 768px) 100vw, 900px"
+                    className="object-cover object-center select-none pointer-events-none"
+                    priority={false}
+                  />
+                </motion.div>
+              )}
+
+              {/* Aktualny kadr – fade-in po załadowaniu */}
               <motion.div
-                key={`hero-${title}-${active}-${heroImg?.url ?? "noimg"}`}
-                initial={{ opacity: 0, scale: 1.01 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.995 }}
+                key={heroImg?.url ?? "noimg"}
+                initial={{ opacity: 0.001 }}
+                animate={{ opacity: nextLoaded ? 1 : 0.001 }}
                 transition={{ duration: 0.35, ease: "easeOut" }}
-                className="relative h-full w-full"
-                onTouchStart={onTouchStart}
-                onTouchEnd={onTouchEnd}
+                className="absolute inset-0 will-change-[opacity]"
               >
                 {heroImg ? (
-                  <>
-                    <Image
-                      src={heroImg.url}
-                      alt={altFor(
-                        heroImg,
-                        `${labels.heroAltPrefix} ${
-                          belt?.beltNo ?? displayName ?? `${active + 1}`
-                        }`
-                      )}
-                      fill
-                      sizes="(max-width:1280px) 90vw, 900px"
-                      className="object-cover object-center"
-                      priority={false}
-                    />
-                    {/* znak wodny w lewym dolnym rogu */}
-{/* znak wodny w lewym dolnym rogu */}
-<div className="absolute left-0 bottom-0 opacity-80">
-  <div className="relative h-16 w-16 overflow-hidden rounded-md">
-    <Image
-      src="/images/znakwodny.png"
-      alt="watermark"
-      fill
-      sizes="64px"
-      className="object-contain pointer-events-none select-none"
-    />
-  </div>
-</div>
-
-
-                    {/* Strzałki na obrazie */}
-                    <button
-                      onClick={goPrev}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
-                      aria-label="Poprzednie zdjęcie"
-                    >
-                      <ChevronLeft className="h-6 w-6" />
-                    </button>
-                    <button
-                      onClick={goNext}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
-                      aria-label="Następne zdjęcie"
-                    >
-                      <ChevronRight className="h-6 w-6" />
-                    </button>
-                  </>
+                  <Image
+                    src={heroImg.url}
+                    alt={altFor(
+                      heroImg,
+                      `${UI_STRINGS[lang].heroAltPrefix} ${
+                        belt?.beltNo ?? displayName ?? `${active + 1}`
+                      }`
+                    )}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 900px"
+                    className="object-cover object-center"
+                    onLoadingComplete={() => {
+                      setNextLoaded(true);
+                      setTimeout(() => setPrevUrl(null), 200);
+                    }}
+                    priority={false}
+                  />
                 ) : (
                   <div className="absolute inset-0 grid place-items-center text-neutral-500">
                     Brak zdjęcia
                   </div>
                 )}
               </motion.div>
-            </AnimatePresence>
+
+              {/* znak wodny */}
+              <div className="absolute left-0 bottom-0 opacity-80">
+                <div className="relative h-16 w-16 overflow-hidden rounded-md">
+                  <Image
+                    src="/images/znakwodny.png"
+                    alt="watermark"
+                    fill
+                    sizes="64px"
+                    className="object-contain pointer-events-none select-none"
+                  />
+                </div>
+              </div>
+
+              {/* Strzałki */}
+              <button
+                onClick={goPrev}
+                className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+                aria-label="Poprzednie zdjęcie"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                onClick={goNext}
+                className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+                aria-label="Następne zdjęcie"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </div>
           </div>
         </div>
 
         {/* MINIATURKI POD HERO */}
-        {/* Mobile: duże kwadraty, poziomy scroll na całą szerokość */}
+        {/* Mobile */}
         {beltThumbs.length > 1 && (
           <div className="md:hidden mt-3">
             <div className="flex gap-3 overflow-x-auto px-1 py-1 snap-x snap-mandatory">
               {beltThumbs.map((thumb, i) => (
                 <button
                   key={`m-thumb-${thumb.url}-${i}`}
-                  onClick={() => setActive(i)}
+                  onClick={() => handleSelectActive(i)}
                   className={`relative h-24 w-24 flex-none overflow-hidden rounded-lg border snap-start ${
                     i === active
                       ? "border-neutral-900 ring-2 ring-neutral-900"
@@ -397,77 +442,74 @@ const scrollDesktopThumbs = (dir: "left" | "right") => {
           </div>
         )}
 
-{/* Desktop: karuzela miniaturek pod hero */}
-{beltThumbs.length > 1 && (
-  <div className="hidden md:block mt-4 relative">
-    {/* przyciski przewijania */}
-<button
-  type="button"
-  aria-label="Przewiń w lewo"
-  onClick={() => scrollDesktopThumbs("left")}
-  className="
-    absolute left-[-2.75rem] top-1/2 -translate-y-1/2 z-10
-    hidden lg:flex h-10 w-10 items-center justify-center
-    text-gray-800 hover:text-gray-900
-    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
-  "
->
-  <ChevronLeft className="h-7 w-7" />
-</button>
+        {/* Desktop: karuzela miniaturek pod hero */}
+        {beltThumbs.length > 1 && (
+          <div className="hidden md:block mt-4 relative">
+            <button
+              type="button"
+              aria-label="Przewiń w lewo"
+              onClick={() => scrollDesktopThumbs("left")}
+              className="
+                absolute left-[-2.75rem] top-1/2 -translate-y-1/2 z-10
+                hidden lg:flex h-10 w-10 items-center justify-center
+                text-gray-800 hover:text-gray-900
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
+              "
+            >
+              <ChevronLeft className="h-7 w-7" />
+            </button>
 
-    <div
-      ref={deskThumbsRef}
-      className="
-    relative overflow-x-auto
-    [scrollbar-width:none]           /* Firefox */
-    [-ms-overflow-style:none]        /* IE/Edge */
-    [&::-webkit-scrollbar]:hidden    /* Chrome/Safari/Opera */
-  "
-    >
-      <div className="flex gap-3 px-1 py-1">
-        {beltThumbs.map((thumb, i) => (
-          <button
-            key={`d-thumb-${thumb.url}-${i}`}
-            onClick={() => setActive(i)}
-            className={`relative aspect-square h-24 lg:h-24 flex-none overflow-hidden rounded-lg border transition ${
-              i === active
-                ? "border-neutral-500 ring-2 ring-neutral-500"
-                : "border-neutral-300 hover:border-neutral-500"
-            }`}
-            aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
-            title={`Pasek ${thumb.beltNo}`}
-          >
-            <div className="relative h-full w-full">
-              <Image
-                src={thumb.url}
-                alt={thumb.alt}
-                fill
-                sizes="(max-width:1280px) 120px, 160px"
-                className="object-cover rounded-lg"
-              />
+            <div
+              ref={deskThumbsRef}
+              className="
+                relative overflow-x-auto
+                [scrollbar-width:none]
+                [-ms-overflow-style:none]
+                [&::-webkit-scrollbar]:hidden
+              "
+            >
+              <div className="flex gap-3 px-1 py-1">
+                {beltThumbs.map((thumb, i) => (
+                  <button
+                    key={`d-thumb-${thumb.url}-${i}`}
+                    onClick={() => handleSelectActive(i)}
+                    className={`relative aspect-square h-24 lg:h-24 flex-none overflow-hidden rounded-lg border transition ${
+                      i === active
+                        ? "border-neutral-500 ring-2 ring-neutral-500"
+                        : "border-neutral-300 hover:border-neutral-500"
+                    }`}
+                    aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
+                    title={`Pasek ${thumb.beltNo}`}
+                  >
+                    <div className="relative h-full w-full">
+                      <Image
+                        src={thumb.url}
+                        alt={thumb.alt}
+                        fill
+                        sizes="(max-width:1280px) 120px, 160px"
+                        className="object-cover rounded-lg"
+                      />
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </button>
-        ))}
-      </div>
-    </div>
 
-{/* przycisk w prawo – na zewnątrz, bez tła */}
-<button
-  type="button"
-  aria-label="Przewiń w prawo"
-  onClick={() => scrollDesktopThumbs("right")}
-  className="
-    absolute right-[-2.75rem] top-1/2 -translate-y-1/2 z-10
-    hidden lg:flex h-10 w-10 items-center justify-center
-    text-gray-800 hover:text-gray-900
-    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
-  "
->
-  <ChevronRight className="h-7 w-7" />
-</button>
-  </div>
-)}
-
+            <button
+              type="button"
+              aria-label="Przewiń w prawo"
+              onClick={() => scrollDesktopThumbs("right")}
+              className="
+                absolute right-[-2.75rem] top-1/2 -translate-y-1/2 z-10
+                hidden lg:flex h-10 w-10 items-center justify-center
+                text-gray-800 hover:text-gray-900
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
+              "
+            >
+              <ChevronRight className="h-7 w-7" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* OPIS + ROZMIARÓWKA */}
@@ -476,87 +518,89 @@ const scrollDesktopThumbs = (dir: "left" | "right") => {
           <h3 className="font-serif text-base sm:text-lg tracking-wide">
             {labels.numberLabel}&nbsp;
             {belt?.beltNo ?? active + 1}&nbsp;
-            {displayName ?? "—"}
+            {displayName || "—"}
           </h3>
 
-        <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">
-            {displayDesc ?? "—"}
+          <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">
+            {displayDesc}
           </p>
         </div>
 
-        {/* Rozmiary */}
-        {/* Rozmiary */}
-<div className="max-w-4xl mx-auto">
-  {/* górny rozmiar */}
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mt-2 sm:mt-14 mb-1 sm:mb-2">
+            <span className="text-[11px] sm:text-[12px] uppercase tracking-wide text-neutral-500">
+              {UI_STRINGS[lang].sizesInCm}
+            </span>
+          </div>
+          <div className="text-center text-xs sm:text-sm text-neutral-600 mb-2 mb-[-48px]">
+            {belt?.upperSize ?? "—"}
+          </div>
 
+          <div className="rounded-2xl overflow-visible">
+            <div className="relative mx-auto w-full max-w-xs sm:max-w-[40%] aspect-[3/2]">
+              <Image
+                src="/images/belt2.png"
+                alt={labels.schemaAlt}
+                fill
+                sizes="(max-width:768px) 90vw, 40vw"
+                className="object-contain"
+              />
 
-  {/* nagłówek: Rozmiary w cm */}
-  <div className="text-center mt-2 sm:mt-14 mb-1 sm:mb-2">
-    <span className="text-[11px] sm:text-[12px] uppercase tracking-wide text-neutral-500">
-      {UI_STRINGS[lang].sizesInCm}
-    </span>
-  </div>
-  <div className="text-center text-xs sm:text-sm text-neutral-600 mb-2 mb-[-48px]">
-    {belt?.upperSize ?? "—"}
-  </div>
-  {/* Schemat */}
-  <div className="rounded-2xl overflow-visible">
-    <div className="relative mx-auto w-full max-w-xs sm:max-w-[40%] aspect-[3/2]">
-      <Image
-        src="/images/belt2.png"
-        alt={labels.schemaAlt}
-        fill
-        sizes="(max-width:768px) 90vw, 40vw"
-        className="object-contain"
-      />
+              <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 left-0 -translate-x-[110%]">
+                <em className="text-xs text-neutral-500 not-italic italic">
+                  {UI_STRINGS[lang].buckleSize}
+                </em>
+                <div className="inline-flex items-center gap-2 rounded-xl text-sm text-neutral-600 px-4  font-medium shadow-sm min-w-[8rem] justify-center">
+                  {typeof belt?.buckleSize !== "undefined" &&
+                  belt?.buckleSize !== null
+                    ? `${belt.buckleSize}`
+                    : "—"}
+                </div>
+              </div>
 
-      {/* BĄBELKI TYLKO NA DESKTOPIE (po bokach schematu) */}
-      <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 left-0 -translate-x-[110%]">
-        <em className="text-xs text-neutral-500 not-italic italic">
-          {UI_STRINGS[lang].buckleSize}
-        </em>
-        <div className="inline-flex items-center gap-2 rounded-xl text-sm text-neutral-600 px-4  font-medium shadow-sm min-w-[8rem] justify-center">
-          {typeof belt?.buckleSize !== "undefined" && belt?.buckleSize !== null ? `${belt.buckleSize}` : "—"}
+              <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 right-0 translate-x-[110%]">
+                <em className="text-xs text-neutral-500 not-italic italic">
+                  {UI_STRINGS[lang].mainSize}
+                </em>
+                <div className="inline-flex items-center gap-2 rounded-xl text-sm text-neutral-600 px-4  font-medium shadow-sm min-w-[8rem] justify-center">
+                  {typeof belt?.mainSize !== "undefined" &&
+                  belt?.mainSize !== null
+                    ? `${belt.mainSize}`
+                    : "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-center text-xs sm:text-sm text-neutral-600 mt-2 mt-[-48px]">
+            {belt?.lowerSize ?? "—"}
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden px-2">
+            <div className="rounded-2xl  px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-xs text-neutral-600 text-center whitespace-nowrap">
+                {UI_STRINGS[lang].buckleSize}
+              </div>
+              <div className="text-center text-sm  leading-tight truncate mt-2">
+                {typeof belt?.buckleSize !== "undefined" &&
+                belt?.buckleSize !== null
+                  ? `${belt.buckleSize}`
+                  : "—"}
+              </div>
+            </div>
+            <div className="rounded-2xl  px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-xs text-neutral-600 text-center whitespace-nowrap">
+                {UI_STRINGS[lang].mainSize}
+              </div>
+              <div className="text-center text-sm  leading-tight truncate mt-2">
+                {typeof belt?.mainSize !== "undefined" &&
+                belt?.mainSize !== null
+                  ? `${belt.mainSize}`
+                  : "—"}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 right-0 translate-x-[110%]">
-        <em className="text-xs text-neutral-500 not-italic italic">
-          {UI_STRINGS[lang].mainSize}
-        </em>
-        <div className="inline-flex items-center gap-2 rounded-xl text-sm text-neutral-600 px-4  font-medium shadow-sm min-w-[8rem] justify-center">
-          {typeof belt?.mainSize !== "undefined" && belt?.mainSize !== null ? `${belt.mainSize}` : "—"}
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {/* dolny rozmiar */}
-  <div className="text-center text-xs sm:text-sm text-neutral-600 mt-2 mt-[-48px]">
-    {belt?.lowerSize ?? "—"}
-  </div>
-
-  {/* BĄBELKI NA MOBILE (pod schematem, małe i ciasne) */}
-  <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden px-2">
-    <div className="rounded-2xl  px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wide text-sm text-neutral-600 text-center whitespace-nowrap">
-        {UI_STRINGS[lang].buckleSize}
-      </div>
-      <div className="text-center text-sm font-medium leading-tight truncate">
-        {typeof belt?.buckleSize !== "undefined" && belt?.buckleSize !== null ? `${belt.buckleSize}` : "—"}
-      </div>
-    </div>
-    <div className="rounded-2xl  px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wide text-sm text-neutral-600 text-center whitespace-nowrap">
-        {UI_STRINGS[lang].mainSize}
-      </div>
-      <div className="text-center text-sm font-medium leading-tight truncate">
-        {typeof belt?.mainSize !== "undefined" && belt?.mainSize !== null ? `${belt.mainSize}` : "—"}
-      </div>
-    </div>
-  </div>
-</div>
-
 
         <p className="mt-8 text-center text-[13px] text-neutral-600 mb-16 italic">
           {labels.price}{" "}
@@ -684,20 +728,19 @@ export default function LuxuryLanding({
     return (c.items?.length || 0) > 0 && (anyWithImages || categoryImages);
   };
 
-const navLink =
-  "relative text-[12px] md:text-[13px] uppercase font-serif text-neutral-800 hover:text-neutral-950 transition " +
-  "after:absolute after:-bottom-1 after:h-[1px] after:w-0 after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full " +
-  "focus:outline-none focus-visible:after:w-full";
+  const navLink =
+    "relative text-[12px] md:text-[13px] uppercase font-serif text-neutral-800 hover:text-neutral-950 transition " +
+    "after:absolute after:-bottom-1 after:h-[1px] after:w-0 after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full " +
+    "focus:outline-none focus-visible:after:w-full";
 
   return (
     <div className="min-h-screen bg-[#f5f5ef] text-neutral-900 selection:bg-neutral-900 selection:text-white">
-<Navbar
-  lang={lang}
-  setLang={setLang}
-  logo="/images/logo3.png"
-  labels={{ navLeather: t.navLeather, navWood: t.navWood }}
-/>
-
+      <Navbar
+        lang={lang}
+        setLang={setLang}
+        logo="/images/logo3.png"
+        labels={{ navLeather: t.navLeather, navWood: t.navWood }}
+      />
 
       {/* MAIN */}
       <main className="pt-[5.75rem] md:pt-24 pb-24">

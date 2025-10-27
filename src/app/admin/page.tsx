@@ -4,6 +4,8 @@ import Image from "next/image";
 import { AnimatePresence, motion, useSpring } from "framer-motion";
 // na górze pliku, wśród importów z lucide-react:
 import { Pencil, Save, X, Trash2, Plus, Image as ImageIcon, Languages, ChevronUp, ChevronDown, Star, StarOff, ArrowUpAZ, ArrowDownAZ, ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
+
 /* ========= helpers ========= */
 const API_HEADERS = (pwd: string) => ({ "x-admin-password": pwd });
 function errToString(e: unknown): string {
@@ -1000,16 +1002,13 @@ export default function AdminPage() {
       <div className="mx-auto max-w-7xl space-y-10">
         <header className="flex items-center justify-between">
           <h1 className="text-xl md:text-2xl font-serif">Panel administracyjny</h1>
-          <div className="flex items-center gap-2 text-xs text-neutral-500">
-            <button
-              onClick={() => setAutoTranslateEN((v) => !v)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ${autoTranslateEN ? "bg-neutral-900 text-white border-neutral-900" : "bg-white"}`}
-              title="Automatyczne tłumaczenie PL→EN (podgląd)"
-            >
-              <Languages className="h-4 w-4" /> EN auto
-            </button>
-            <span>Hasło zapisane lokalnie</span>
-          </div>
+    <Link
+      href="/admin/wood"
+      className="rounded-lg bg-neutral-900 text-white px-6 py-3 text-lg"
+      title="Zarządzaj WOOD"
+    >
+      Zarządzanie WOOD
+    </Link>
         </header>
 
         {/* KATEGORIE */}
