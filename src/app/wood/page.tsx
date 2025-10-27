@@ -11,8 +11,12 @@ import {
   Youtube,
   Linkedin,
 } from "lucide-react";
+import Navbar from "../components/Navbar"; // ścieżkę dostosuj do siebie
+
 /* ====== i18n ====== */
 type Lang = "pl" | "en";
+
+
 
 const UI = {
   pl: {
@@ -103,88 +107,14 @@ export default function WoodPage() {
   return (
     <div className="min-h-screen bg-[#f5f5ef] text-neutral-900 selection:bg-neutral-900 selection:text-white">
       {/* NAVBAR */}
-      <header className="fixed top-0 inset-x-0 z-50 bg-[#f5f5ef] backdrop-blur supports-[backdrop-filter]:bg-[#f5f5ef] border-b border-neutral-200">
-        <div className="mx-auto max-w-6xl h-16 md:h-20 px-4">
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center h-full">
-            <div className="justify-self-start">
-              <Link
-                href="/"
-                className="relative text-[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-800 hover:text-neutral-950 transition after:absolute after:left-0 after:-bottom-1 after:h-[1px] after:w-0 after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full"
-              >
-                {t.leather}
-              </Link>
-            </div>
+<Navbar
+  lang={lang}
+  setLang={setLang}
+  logo="/images/logo3.png"
+  labels={{ navLeather: t.leather, navWood: t.wood }}
+/>
 
-            <div className="justify-self-center">
-              <div className="relative h-14 w-14 md:h-20 md:w-20">
-                <Image
-                  src="/images/logo3.png"
-                  alt="Craft Symphony"
-                  fill
-                  sizes="80px"
-                  className="object-contain"
-                />
-              </div>
-            </div>
 
-            <div className="justify-self-end flex items-center gap-3">
-              <span className="hidden sm:inline text-[12px] md:text-[13px] tracking-[0.2em] uppercase font-serif text-neutral-950">
-                {t.wood}
-              </span>
-              <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/80 backdrop-blur px-1.5 py-1 shadow-sm">
-                <button
-                  onClick={() => setLang("pl")}
-                  aria-pressed={lang === "pl"}
-                  className={`inline-flex items-center justify-center rounded-md p-1.5 ${
-                    lang === "pl" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"
-                  }`}
-                  title="Polski"
-                >
-                  <Image src="/images/poland.png" alt="PL" width={20} height={14} className="rounded-[2px] shadow-sm" />
-                </button>
-                <button
-                  onClick={() => setLang("en")}
-                  aria-pressed={lang === "en"}
-                  className={`inline-flex items-center justify-center rounded-md p-1.5 ${
-                    lang === "en" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"
-                  }`}
-                  title="English"
-                >
-                  <Image src="/images/england.png" alt="EN" width={20} height={14} className="rounded-[2px] shadow-sm" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* mobile: pasek flag pod navem */}
-        <div className="sm:hidden border-t border-neutral-200 bg-[#f5f5ef]/95">
-          <div className="mx-auto max-w-6xl px-4 py-2 flex items-center justify-center gap-3">
-            <button
-              onClick={() => setLang("pl")}
-              aria-pressed={lang === "pl"}
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
-                lang === "pl" ? "border-neutral-900" : "border-neutral-300"
-              }`}
-              title="Polski"
-            >
-              <Image src="/images/poland.png" alt="PL" width={18} height={12} className="rounded-[2px] shadow-sm" />
-              <span>PL</span>
-            </button>
-            <button
-              onClick={() => setLang("en")}
-              aria-pressed={lang === "en"}
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
-                lang === "en" ? "border-neutral-900" : "border-neutral-300"
-              }`}
-              title="English"
-            >
-              <Image src="/images/england.png" alt="EN" width={18} height={12} className="rounded-[2px] shadow-sm" />
-              <span>EN</span>
-            </button>
-          </div>
-        </div>
-      </header>
 
       {/* MAIN */}
       <main className="pt-[calc(80px+40px)] sm:pt-24 pb-24">
