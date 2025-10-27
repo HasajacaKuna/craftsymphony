@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import Navbar from "../components/Navbar"; // ścieżkę dostosuj do siebie
 
 /* ===== Typy ===== */
 export type Lang = "pl" | "en";
@@ -104,8 +105,8 @@ const UI_STRINGS: Record<
     beltNoPlaceholder: "Nr paska",
     submit: "Wyślij zapytanie",
     price: "Cena:",
-    mainSize: "Rozmiar główny",
-    buckleSize: "Rozmiar sprzączki",
+   mainSize: "Długość paska",
+   buckleSize: "Szerokość klamry",
     sizesInCm: "Rozmiary w cm",
     about:
       "Każdy pasek powstaje w całości ręcznie – od doboru skóry, przez cięcie i barwienie, po wykończenie krawędzi. Wierzymy w rzemiosło, które ma duszę: staranność detalu i ponadczasowy charakter. Nasze paski łączą tradycję z nowoczesną precyzją — projektowane z myślą o trwałości i pięknie, które dojrzewa z czasem.",
@@ -126,8 +127,8 @@ const UI_STRINGS: Record<
     beltNoPlaceholder: "Belt no.",
     submit: "Send request",
     price: "Price:",
-    mainSize: "Main size",
-    buckleSize: "Buckle size",
+   mainSize: "Belt length",
+   buckleSize: "Buckle width",
     sizesInCm: "Sizes in cm",
     about:
       "Each belt is crafted entirely by hand — from leather selection and cutting to dyeing and edge finishing. We believe in soul-filled craftsmanship: meticulous detail and timeless character. Our belts blend tradition with modern precision, designed for durability and beauty that matures over time.",
@@ -296,7 +297,7 @@ const scrollDesktopThumbs = (dir: "left" | "right") => {
       {/* HERO */}
       <div className="relative">
         <div className="relative w-full">
-          <div className="relative w-full aspect-[3/4] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100">
+          <div className="relative w-1/2 aspect-[3/4] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100 mx-auto">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`hero-${title}-${active}-${heroImg?.url ?? "noimg"}`}
@@ -428,7 +429,7 @@ const scrollDesktopThumbs = (dir: "left" | "right") => {
           <button
             key={`d-thumb-${thumb.url}-${i}`}
             onClick={() => setActive(i)}
-            className={`relative aspect-square h-28 lg:h-32 flex-none overflow-hidden rounded-lg border transition ${
+            className={`relative aspect-square h-24 lg:h-24 flex-none overflow-hidden rounded-lg border transition ${
               i === active
                 ? "border-neutral-500 ring-2 ring-neutral-500"
                 : "border-neutral-300 hover:border-neutral-500"
@@ -690,129 +691,13 @@ const navLink =
 
   return (
     <div className="min-h-screen bg-[#f5f5ef] text-neutral-900 selection:bg-neutral-900 selection:text-white">
-      {/* NAVBAR */}
-      <header className="fixed top-0 inset-x-0 z-50 bg-[#f5f5ef] backdrop-blur supports-[backdrop-filter]:bg-[#f5f5ef]">
-        <div className="relative mx-auto max-w-6xl h-16 md:h-20 px-4">
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center h-full">
-            <div /> {/* pusty wyrównywacz */}
+<Navbar
+  lang={lang}
+  setLang={setLang}
+  logo="/images/logo3.png"
+  labels={{ navLeather: t.navLeather, navWood: t.navWood }}
+/>
 
-            {/* Środek */}
-            <div className="justify-self-center">
-              <div className="flex items-center gap-6 md:gap-8">
-          <Link href="/" className={`${navLink} after:left-0`}>{t.navLeather}</Link>
-
-
-                <div className="relative h-14 w-14 md:h-20 md:w-20 shrink-0">
-                  <Image
-                    src={logo}
-                    alt="Craft Symphony"
-                    fill
-                    sizes="80px"
-                    className="object-contain"
-                  />
-                </div>
-
-                <Link href="/wood" className={`${navLink} after:right-0`}>{t.navWood}</Link>
-
-
-
-
-
-
-
-              </div>
-            </div>
-
-            {/* DESKTOP/TABLET: języki po prawej */}
-            <div className="justify-self-end hidden sm:block">
-              <div className="flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white/80 backdrop-blur px-1.5 py-1 shadow-sm">
-                {/* PL */}
-                <button
-                  onClick={() => setLang("pl")}
-                  aria-pressed={lang === "pl"}
-                  aria-label="Polski"
-                  title="Polski"
-                  className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors
-              focus:outline-none focus:ring-2 focus:ring-[#f5f5ef]
-              ${lang === "pl" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
-                >
-                  <Image
-                    src="/images/poland.png"
-                    alt=""
-                    width={20}
-                    height={14}
-                    className="rounded-[2px] shadow-sm"
-                  />
-                  <span className="sr-only">PL</span>
-                </button>
-                {/* EN */}
-                <button
-                  onClick={() => setLang("en")}
-                  aria-pressed={lang === "en"}
-                  aria-label="English"
-                  title="English"
-                  className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors
-              focus:outline-none focus:ring-2 focus:ring-[#f5f5ef]
-              ${lang === "en" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
-                >
-                  <Image
-                    src="/images/england.png"
-                    alt=""
-                    width={20}
-                    height={14}
-                    className="rounded-[2px] shadow-sm"
-                  />
-                  <span className="sr-only">EN</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* MOBILE: pływające flagi w prawym górnym rogu */}
-{/* MOBILE: pasek flag pod navbarem (fixed) */}
-<div className="sm:hidden fixed top-16 inset-x-0 z-40">
-  <div className="mx-auto max-w-6xl px-4 py-2 flex items-center justify-end gap-1.5">
-    <button
-      onClick={() => setLang("pl")}
-      aria-pressed={lang === "pl"}
-      aria-label="Polski"
-      title="Polski"
-      className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors ${
-        lang === "pl" ? "bg-[#eaeae2]" : "hover:bg-neutral-100"
-      }`}
-    >
-      <Image
-        src="/images/poland.png"
-        alt=""
-        width={20}
-        height={14}
-        className="rounded-[2px] shadow-sm"
-      />
-      <span className="sr-only">PL</span>
-    </button>
-    <button
-      onClick={() => setLang("en")}
-      aria-pressed={lang === "en"}
-      aria-label="English"
-      title="English"
-      className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors ${
-        lang === "en" ? "bg-[#eaeae2]" : "hover:bg-neutral-100"
-      }`}
-    >
-      <Image
-        src="/images/england.png"
-        alt=""
-        width={20}
-        height={14}
-        className="rounded-[2px] shadow-sm"
-      />
-      <span className="sr-only">EN</span>
-    </button>
-  </div>
-</div>
-
-        </div>
-      </header>
 
       {/* MAIN */}
       <main className="pt-[5.75rem] md:pt-24 pb-24">
