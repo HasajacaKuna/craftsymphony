@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -10,19 +10,37 @@ import {
 
 /* ========= helpers ========= */
 const API_HEADERS = (pwd: string) => ({ "x-admin-password": pwd });
+
 function errToString(e: unknown): string {
   if (e instanceof Error) return e.message;
   try { return JSON.stringify(e); } catch { return String(e); }
 }
+
+type UploadResp = { path: string };
+
+function isUploadResp(x: unknown): x is UploadResp {
+  if (typeof x !== "object" || x === null) return false;
+  const obj = x as Record<string, unknown>;
+  return typeof obj.path === "string";
+}
+
+
+
 async function readJSON<T = unknown>(res: Response): Promise<T | null | { raw: string }> {
   const ctype = res.headers.get("content-type") || "";
   const text = await res.text().catch(() => "");
   if (!res.ok) {
     try {
-      const parsed: any = text ? JSON.parse(text) : null;
-      const msg = parsed?.error || parsed?.message || text || `HTTP ${res.status}`;
+      const parsed = text ? (JSON.parse(text) as { error?: unknown; message?: unknown }) : null;
+      const msg =
+        (typeof parsed?.error === "string" && parsed.error) ||
+        (typeof parsed?.message === "string" && parsed.message) ||
+        text ||
+        `HTTP ${res.status}`;
       throw new Error(msg);
-    } catch { throw new Error(text || `HTTP ${res.status}`); }
+    } catch {
+      throw new Error(text || `HTTP ${res.status}`);
+    }
   }
   if (!text) return null;
   if (ctype.includes("application/json")) {
@@ -100,7 +118,7 @@ function formatPrice(lang: Lang, pln: number) {
 export default function AdminWoodPage() {
   // auth
   const [password, setPassword] = useState("");
-  const [ok, setOk] = useState(false);
+  const [, setOk] = useState(false); // setter zostaje, zmienna niepotrzebna
 
   const [uiLang, setUiLang] = useState<Lang>("pl");
   const t = UI[uiLang];
@@ -139,21 +157,28 @@ export default function AdminWoodPage() {
     try { localStorage.setItem("cs_lang", uiLang); document.documentElement.lang = uiLang; } catch {}
   }, [uiLang]);
 
-  const authedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const res = await fetch(input, {
-      ...init,
-      headers: { ...(init?.headers || {}), ...API_HEADERS(password) },
-      cache: "no-store",
-    });
-    if (res.status === 401) throw new Error("Błędne hasło");
-    return res;
-  };
-  const authedJSON = async <T = unknown>(input: RequestInfo | URL, init?: RequestInit) => {
-    const res = await authedFetch(input, init);
-    return readJSON<T>(res);
-  };
+  const authedFetch = useCallback(
+    async (input: string | URL, init?: RequestInit) => {
+      const res = await fetch(input, {
+        ...init,
+        headers: { ...(init?.headers || {}), ...API_HEADERS(password) },
+        cache: "no-store",
+      });
+      if (res.status === 401) throw new Error("Błędne hasło");
+      return res;
+    },
+    [password]
+  );
 
-  const refresh = async () => {
+  const authedJSON = useCallback(
+    async <T = unknown>(input: string | URL, init?: RequestInit) => {
+      const res = await authedFetch(input, init);
+      return readJSON<T>(res);
+    },
+    [authedFetch]
+  );
+
+  const refresh = useCallback(async () => {
     setLoading(true); setMsg(null);
     try {
       const data = (await authedJSON<WoodItem[]>("/api/admin/wood")) ?? [];
@@ -167,16 +192,25 @@ export default function AdminWoodPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [authedJSON]);
 
-  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { refresh(); }, [refresh]);
 
-  const uploadOne = async (file: File) => {
-    const fd = new FormData(); fd.append("file", file);
-    const data = await authedJSON<{ path: string }>("/api/admin/upload", { method: "POST", body: fd });
-    const p = (data as any)?.path; if (!p) throw new Error("Upload nie zwrócił ścieżki");
-    return p as string;
-  };
+const uploadOne = async (file: File) => {
+  const fd = new FormData();
+  fd.append("file", file);
+
+  const data = await authedJSON<UploadResp>("/api/admin/upload", {
+    method: "POST",
+    body: fd,
+  });
+
+  if (!isUploadResp(data)) {
+    throw new Error("Upload nie zwrócił poprawnej odpowiedzi (brak pola 'path').");
+  }
+
+  return data.path;
+};
 
   const createItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -386,7 +420,7 @@ export default function AdminWoodPage() {
 
               {cPreview && (
                 <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border">
-                  <Image src={cPreview} alt="preview" fill className="object-cover" />
+                  <Image src={cPreview as string} alt="preview" fill className="object-cover" />
                   <button
                     type="button"
                     className="absolute top-2 right-2 px-2 py-1 text-xs rounded bg-white/85 border"
@@ -422,7 +456,7 @@ export default function AdminWoodPage() {
                 return (
                   <div key={it._id} className="rounded-2xl border p-3 bg-white">
                     <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border">
-                      <Image src={ed?.newPreview || it.image} alt="wood" fill className="object-cover" />
+                      <Image src={ed?.newPreview ?? it.image} alt="wood" fill className="object-cover" />
                     </div>
 
                     {!ed ? (

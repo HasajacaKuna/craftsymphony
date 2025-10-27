@@ -11,30 +11,63 @@ function assertAuth(req: NextRequest) {
   return null;
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+type WoodPatch = Partial<{
+  descriptionPl: string;
+  descriptionEn: string | null;
+  pricePLN: number;
+  image: string;
+  order: number;
+}>;
+
+export async function PATCH(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   const unauthorized = assertAuth(req);
   if (unauthorized) return unauthorized;
 
-  const body = await req.json();
-  const patch: any = {};
-  if ("descriptionPl" in body) patch.descriptionPl = body.descriptionPl ?? "";
-  if ("descriptionEn" in body) patch.descriptionEn = body.descriptionEn ?? null;
-  if ("pricePLN" in body) patch.pricePLN = Number(body.pricePLN);
-  if ("image" in body) patch.image = body.image ?? "";
-  if ("order" in body) patch.order = body.order == null ? 0 : Number(body.order);
+  const { id } = await context.params;
+
+  const raw = (await req.json().catch(() => null)) as unknown;
+  const body = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+
+  const patch: WoodPatch = {};
+
+  if ("descriptionPl" in body)
+    patch.descriptionPl = typeof body.descriptionPl === "string" ? body.descriptionPl : "";
+  if ("descriptionEn" in body)
+    patch.descriptionEn =
+      typeof body.descriptionEn === "string" && body.descriptionEn.trim() !== ""
+        ? body.descriptionEn
+        : null;
+  if ("pricePLN" in body) {
+    const n = Number((body as Record<string, unknown>).pricePLN);
+    if (!Number.isNaN(n)) patch.pricePLN = n;
+  }
+  if ("image" in body)
+    patch.image = typeof body.image === "string" ? body.image : "";
+  if ("order" in body) {
+    const n = Number((body as Record<string, unknown>).order);
+    patch.order = Number.isNaN(n) ? 0 : n;
+  }
 
   await dbConnect();
-  const updated = await WoodItem.findByIdAndUpdate(params.id, patch, { new: true });
+  const updated = await WoodItem.findByIdAndUpdate(id, patch, { new: true });
   if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(updated);
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   const unauthorized = assertAuth(req);
   if (unauthorized) return unauthorized;
 
+  const { id } = await context.params;
+
   await dbConnect();
-  const deleted = await WoodItem.findByIdAndDelete(params.id);
+  const deleted = await WoodItem.findByIdAndDelete(id);
   if (!deleted) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
