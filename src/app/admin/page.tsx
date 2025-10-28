@@ -69,7 +69,6 @@ async function readJSON<T = unknown>(res: Response): Promise<T | null | { raw: s
 }
 
 /** nagłówki do API admina */
-const API_HEADERS = (pwd: string) => ({ "x-admin-password": pwd });
 
 /** prosty fetch bez auth (do publicznych, tu prawie nieużywany) */
 const plainFetch = async (input: RequestInfo | URL, init?: RequestInit) =>
@@ -80,29 +79,8 @@ const json = async <T = unknown>(input: RequestInfo | URL, init?: RequestInit) =
   return readJSON<T>(res);
 };
 
-/** fetch z auth – korzysta z hasła ze stanu, opcjonalnie można podać overridePwd */
-function makeAuthed(passwordRef: () => string) {
-  const authedFetch = async (input: RequestInfo | URL, init?: RequestInit, overridePwd?: string) => {
-    const pwd = overridePwd ?? passwordRef();
-    if (!pwd) throw new Error("Brak hasła administracyjnego.");
-    const res = await fetch(input, {
-      ...init,
-      headers: { ...(init?.headers || {}), ...API_HEADERS(pwd) },
-      cache: "no-store",
-    });
-    if (res.status === 401) throw new Error("Błędne hasło (401 Unauthorized).");
-    return res;
-  };
-  const authedJSON = async <T = unknown>(
-    input: RequestInfo | URL,
-    init?: RequestInit,
-    overridePwd?: string
-  ): Promise<T | null | { raw: string }> => {
-    const res = await authedFetch(input, init, overridePwd);
-    return readJSON<T>(res);
-  };
-  return { authedFetch, authedJSON };
-}
+const authedFetch = plainFetch;
+const authedJSON = json;
 
 /* ========= types ========= */
 type Lang = "pl" | "en";
@@ -481,8 +459,6 @@ export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [ok, setOk] = useState(false);
 
-  const { authedFetch, authedJSON } = makeAuthed(() => password);
-
   const [cats, setCats] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(false);
@@ -561,36 +537,29 @@ export default function AdminPage() {
   const [cFile, setCFile] = useState<File | null>(null);
   const [cPreview, setCPreview] = useState<string | null>(null);
 
-  /* ===== AUTO-LOGIN ===== */
-  useEffect(() => {
+/* ===== AUTO-LOGIN (sprawdź czy sesja już istnieje) ===== */
+useEffect(() => {
+  (async () => {
     try {
-      const saved = localStorage.getItem("admin_pwd");
-      if (!saved) return;
-      setPassword(saved);
-      (async () => {
-        try {
-          await authedJSON("/api/admin/categories", undefined, saved);
-          setOk(true);
-          const [catsData, itemsData, woodData] = await Promise.all([
-            authedJSON<Category[]>("/api/admin/categories", undefined, saved),
-            authedJSON<Item[]>("/api/admin/items", undefined, saved),
-            authedJSON<WoodItem[]>("/api/admin/wood", undefined, saved),
-          ]);
-          setCats(Array.isArray(catsData) ? catsData : []);
-          setItems(Array.isArray(itemsData) ? itemsData : []);
-          setWood(Array.isArray(woodData) ? [...woodData].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) : []);
-          setMsg(null);
-        } catch (e) {
-          localStorage.removeItem("admin_pwd");
-          setOk(false);
-          setMsg(errToString(e));
-        }
-      })();
-    } catch {
-      /* ignore */
+      // jeśli zalogowani, to to zadziała; jeśli nie — poleci 401 i złapie catch
+      const [catsData, itemsData, woodData] = await Promise.all([
+        authedJSON<Category[]>("/api/admin/categories"),
+        authedJSON<Item[]>("/api/admin/items"),
+        authedJSON<WoodItem[]>("/api/admin/wood"),
+      ]);
+      setCats(Array.isArray(catsData) ? catsData : []);
+      setItems(Array.isArray(itemsData) ? itemsData : []);
+      setWood(Array.isArray(woodData) ? [...woodData].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) : []);
+      setOk(true);
+      setMsg(null);
+    } catch (e) {
+      setOk(false);
+      setMsg(null); // brak błędu na wejściu — po prostu pokaż ekran logowania
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
 
   /* ===== translator helper (opcjonalny) – Z AUTH bo to /api/admin/translate ===== */
   async function translatePLtoEN(text: string): Promise<string> {
@@ -610,27 +579,38 @@ export default function AdminPage() {
 
   /* ===== manualne logowanie ===== */
   const tryAuth = async () => {
-    setLoading(true);
-    setMsg(null);
-    try {
-      await authedJSON("/api/admin/categories", undefined, password);
-      localStorage.setItem("admin_pwd", password);
-      setOk(true);
-      const [catsData, itemsData, woodData] = await Promise.all([
-        authedJSON<Category[]>("/api/admin/categories"),
-        authedJSON<Item[]>("/api/admin/items"),
-        authedJSON<WoodItem[]>("/api/admin/wood"),
-      ]);
-      setCats(Array.isArray(catsData) ? catsData : []);
-      setItems(Array.isArray(itemsData) ? itemsData : []);
-      setWood(Array.isArray(woodData) ? [...woodData].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) : []);
-    } catch (e) {
-      setOk(false);
-      setMsg(errToString(e));
-    } finally {
-      setLoading(false);
-    }
-  };
+  setLoading(true);
+  setMsg(null);
+  try {
+    // NOWE: jedno logowanie — serwer ustawia cookie sesji (httpOnly)
+    const res = await plainFetch("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+      // ważne dla Next.js: fetch domyślnie wyśle i przyjmie cookies w tym samym originie
+      // (credentials: "include" nie jest potrzebne przy tym samym originie, ale można dodać:)
+      credentials: "same-origin",
+    });
+    await readJSON(res); // rzuci jeśli !ok
+
+    // Po sukcesie — po prostu pobierz dane, cookie już jest ustawione
+    const [catsData, itemsData, woodData] = await Promise.all([
+      authedJSON<Category[]>("/api/admin/categories"),
+      authedJSON<Item[]>("/api/admin/items"),
+      authedJSON<WoodItem[]>("/api/admin/wood"),
+    ]);
+    setCats(Array.isArray(catsData) ? catsData : []);
+    setItems(Array.isArray(itemsData) ? itemsData : []);
+    setWood(Array.isArray(woodData) ? [...woodData].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) : []);
+    setOk(true);
+    setPassword(""); // nie trzymaj hasła w pamięci
+  } catch (e) {
+    setOk(false);
+    setMsg(errToString(e));
+  } finally {
+    setLoading(false);
+  }
+};
 
   const refreshItems = async () => {
     const data = (await authedJSON<Item[]>("/api/admin/items")) ?? [];
@@ -1134,9 +1114,9 @@ export default function AdminPage() {
       <main className="min-h-screen bg-[#f5f5ef] text-neutral-900 flex items-center justify-center p-6">
         <div className="w-full max-w-sm rounded-2xl border border-neutral-300 bg-white p-6 shadow-sm">
           <h1 className="text-lg font-serif mb-2">Panel administracyjny</h1>
-          <p className="text-sm text-neutral-600 mb-4">
-            Podaj hasło. Zostanie zapisane lokalnie, aby nie logować się za każdym razem.
-          </p>
+<p className="text-sm text-neutral-600 mb-4">
+  Podaj hasło do panelu. Po zalogowaniu sesja będzie utrzymywana w przeglądarce.
+</p>
           <input
             type="password"
             value={password}
