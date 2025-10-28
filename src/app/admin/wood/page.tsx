@@ -57,6 +57,38 @@ async function readJSON<T = unknown>(res: Response): Promise<T | null | { raw: s
   }
 }
 
+/* ===== AUTH helpers (nagłówek x-admin-password z localStorage) ===== */
+const getPwd = () => {
+  try {
+    return localStorage.getItem("admin_pwd") || "";
+  } catch {
+    return "";
+  }
+};
+
+function makeAuthed() {
+  const authedFetch = async (input: string | URL, init?: RequestInit) => {
+    const pwd = getPwd();
+    const res = await fetch(input, {
+      ...init,
+      headers: { ...(init?.headers || {}), "x-admin-password": pwd },
+      cache: "no-store",
+    });
+    return res;
+  };
+  const authedJSON = async <T = unknown>(input: string | URL, init?: RequestInit) => {
+    const res = await authedFetch(input, init);
+    if (res.status === 401) {
+      // pozwoli UI pokazać błąd „Unauthorized”
+      throw new Error('Błędne hasło (401 Unauthorized). Wejdź do panelu i zaloguj się ponownie.');
+    }
+    return readJSON<T>(res);
+  };
+  return { authedFetch, authedJSON };
+}
+
+const { authedJSON } = makeAuthed();
+
 /* upload response type-guard */
 type UploadResp = { path: string };
 function isUploadResp(x: unknown): x is UploadResp {
@@ -99,6 +131,7 @@ const UI = {
     delete: "Usuń",
     empty: "Brak produktów",
     loading: "Ładowanie…",
+    unauthorized: "Brak autoryzacji. Wejdź do panelu i zaloguj się ponownie.",
   },
   en: {
     title: "WOOD — management",
@@ -121,15 +154,14 @@ const UI = {
     delete: "Delete",
     empty: "No products",
     loading: "Loading…",
+    unauthorized: "Unauthorized. Go to admin and sign in again.",
   },
 } as const;
 
 function formatPrice(lang: Lang, pln: number) {
   return lang === "pl"
     ? `${pln.toLocaleString("pl-PL", { maximumFractionDigits: 0 })} PLN`
-    : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(
-        pln / 4
-      );
+    : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(pln / 4);
 }
 
 /* ========= page ========= */
@@ -185,24 +217,11 @@ export default function AdminWoodPage() {
     }
   }, [uiLang]);
 
-  /* proste fetchery bez auth */
-  const plainFetch = useCallback(
-    async (input: string | URL, init?: RequestInit) => fetch(input, { ...init, cache: "no-store" }),
-    []
-  );
-  const json = useCallback(
-    async <T = unknown>(input: string | URL, init?: RequestInit) => {
-      const res = await plainFetch(input, init);
-      return readJSON<T>(res);
-    },
-    [plainFetch]
-  );
-
   const refresh = useCallback(async () => {
     setLoading(true);
     setMsg(null);
     try {
-      const data = (await json<WoodItem[]>("/api/admin/wood")) ?? [];
+      const data = (await authedJSON<WoodItem[]>("/api/admin/wood")) ?? [];
       const arr = Array.isArray(data) ? data : [];
       arr.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       setItems(arr);
@@ -211,7 +230,7 @@ export default function AdminWoodPage() {
     } finally {
       setLoading(false);
     }
-  }, [json]);
+  }, []);
 
   useEffect(() => {
     refresh();
@@ -221,7 +240,7 @@ export default function AdminWoodPage() {
     const fd = new FormData();
     fd.append("file", file);
 
-    const data = await json<UploadResp>("/api/admin/upload", {
+    const data = await authedJSON<UploadResp>("/api/admin/upload", {
       method: "POST",
       body: fd,
     });
@@ -240,7 +259,7 @@ export default function AdminWoodPage() {
     try {
       if (!cFile) throw new Error("Dodaj zdjęcie");
       const img = await uploadOne(cFile);
-      await json("/api/admin/wood", {
+      await authedJSON("/api/admin/wood", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -298,7 +317,7 @@ export default function AdminWoodPage() {
     try {
       let image: string | undefined;
       if (data.newFile) image = await uploadOne(data.newFile);
-      await json(`/api/admin/wood/${id}`, {
+      await authedJSON(`/api/admin/wood/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -323,7 +342,7 @@ export default function AdminWoodPage() {
     setLoading(true);
     setMsg(null);
     try {
-      await json(`/api/admin/wood/${id}`, { method: "DELETE" });
+      await authedJSON(`/api/admin/wood/${id}`, { method: "DELETE" });
       await refresh();
       setMsg("Usunięto");
     } catch (e) {
@@ -346,12 +365,12 @@ export default function AdminWoodPage() {
     setLoading(true);
     setMsg(null);
     try {
-      await json(`/api/admin/wood/${a._id}`, {
+      await authedJSON(`/api/admin/wood/${a._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order: bOrder }),
       });
-      await json(`/api/admin/wood/${b._id}`, {
+      await authedJSON(`/api/admin/wood/${b._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order: aOrder }),
@@ -374,16 +393,16 @@ export default function AdminWoodPage() {
     }));
   }, [items, previewLang]);
 
+  // gdy 401, pokaż szybki komunikat i link do ponownego logowania
+  const unauthorized = typeof msg === "string" && /401/i.test(msg);
+
   return (
     <main className="min-h-screen bg-[#f5f5ef] text-neutral-900 p-4 md:p-8">
       <div className="mx-auto max-w-7xl space-y-8">
         {/* Header */}
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link
-              href="/admin"
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-neutral-50"
-            >
+            <Link href="/admin" className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-neutral-50">
               <ChevronLeft className="h-4 w-4" /> {t.back}
             </Link>
             <h1 className="text-xl md:text-2xl font-serif">{t.title}</h1>
@@ -400,6 +419,15 @@ export default function AdminWoodPage() {
             </button>
           </div>
         </header>
+
+        {unauthorized && (
+          <div className="rounded-xl border border-red-300 bg-red-50 text-red-700 p-3 text-sm">
+            {t.unauthorized}{" "}
+            <Link href="/admin" className="underline">
+              {t.back}
+            </Link>
+          </div>
+        )}
 
         {/* Create */}
         <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm">
@@ -645,15 +673,12 @@ export default function AdminWoodPage() {
         {/* Preview */}
         <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm">
           <h2 className="font-medium mb-4">{t.previewTitle}</h2>
-          {previewCards.length === 0 ? (
+          {items.length === 0 ? (
             <div className="text-sm text-neutral-500">{UI[uiLang].empty}</div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {previewCards.map((p, i) => (
-                <article
-                  key={i}
-                  className="rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm"
-                >
+                <article key={i} className="rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm">
                   <div className="relative w-full aspect-square bg-neutral-100">
                     <Image
                       src={p.image}
