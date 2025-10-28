@@ -2,25 +2,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useSpring } from "framer-motion";
-import {
-  Pencil,
-  Save,
-  X,
-  Trash2,
-  Plus,
-  Image as ImageIcon,
-  ChevronUp,
-  ChevronDown,
-  Star,
-  StarOff,
-  ArrowUpAZ,
-  ArrowDownAZ,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
-import Link from "next/link";
-
+// na górze pliku, wśród importów z lucide-react:
+import { Pencil, Save, X, Trash2, Plus, Image as ImageIcon, Languages, ChevronUp, ChevronDown, Star, StarOff, ArrowUpAZ, ArrowDownAZ, ChevronLeft, ChevronRight } from "lucide-react";
 /* ========= helpers ========= */
+const API_HEADERS = (pwd: string) => ({ "x-admin-password": pwd });
 function errToString(e: unknown): string {
   if (e instanceof Error) return e.message;
   try {
@@ -30,7 +15,7 @@ function errToString(e: unknown): string {
   }
 }
 
-/** bezpieczne czytanie JSON z Response */
+/* bezpieczne czytanie JSON z Response */
 async function readJSON<T = unknown>(res: Response): Promise<T | null | { raw: string }> {
   const ctype = res.headers.get("content-type") || "";
   const text = await res.text().catch(() => "");
@@ -68,26 +53,8 @@ async function readJSON<T = unknown>(res: Response): Promise<T | null | { raw: s
   }
 }
 
-/** nagłówki do API admina */
-
-/** prosty fetch bez auth (do publicznych, tu prawie nieużywany) */
-const plainFetch = async (input: RequestInfo | URL, init?: RequestInit) =>
-  fetch(input, { ...init, cache: "no-store" });
-
-const json = async <T = unknown>(input: RequestInfo | URL, init?: RequestInit) => {
-  const res = await plainFetch(input, init);
-  return readJSON<T>(res);
-};
-
-const authedFetch = plainFetch;
-const authedJSON = json;
-
 /* ========= types ========= */
 type Lang = "pl" | "en";
-type UploadResp = { path: string };
-function isUploadResp(x: unknown): x is UploadResp {
-  return typeof x === "object" && x !== null && "path" in x && typeof (x as { path: unknown }).path === "string";
-}
 
 type Category = { _id: string; name: string; slug: string; order?: number };
 type CategoryRef = { _id: string; name: string; slug: string };
@@ -116,17 +83,7 @@ type Item = {
   images: ItemImage[];
 };
 
-/* ==== WOOD ==== */
-type WoodItem = {
-  _id: string;
-  descriptionPl: string;
-  descriptionEn?: string;
-  pricePLN: number;
-  image: string; // URL
-  order?: number | null;
-};
-
-/* ========= preview UI ========= */
+// 1) BeltItem – z numerem:
 type BeltItem = {
   name: string;
   description: string;
@@ -134,11 +91,12 @@ type BeltItem = {
   upperSize: string;
   lowerSize: string;
   mainSize?: string | number;
-  buckleSize?: string | number;
+  buckleSize?: string | number; // ⬅️ NOWE
   image?: string;
   beltNo?: number;
 };
 
+// Type guard for populated category
 function isCatObj(x: Item["categoryId"]): x is CategoryRef {
   return typeof x === "object" && x !== null && "_id" in x && typeof (x as CategoryRef)._id === "string";
 }
@@ -154,8 +112,8 @@ const UI_STRINGS: Record<
     mainSize: string;
     scrollUp: string;
     scrollDown: string;
-    buckleSize: string;
-    sizesInCm: string;
+    buckleSize: string,
+    sizesInCm: string,
   }
 > = {
   pl: {
@@ -167,8 +125,9 @@ const UI_STRINGS: Record<
     mainSize: "Rozmiar główny",
     scrollUp: "Przewiń w górę",
     scrollDown: "Przewiń w dół",
-    buckleSize: "Rozmiar sprzączki",
+        buckleSize: "Rozmiar sprzączki",
     sizesInCm: "Rozmiary w cm",
+    
   },
   en: {
     preview: "Preview (like the homepage)",
@@ -184,24 +143,35 @@ const UI_STRINGS: Record<
   },
 };
 
+/* ========= price formatting (PL → PLN / EN → USD=PLN/4) ========= */
 function formatPriceForLang(price: string | number | undefined, lang: Lang) {
   if (price == null) return "—";
   if (typeof price === "number") {
     if (lang === "pl") return `${price.toLocaleString("pl-PL")} PLN`;
     const usd = price / 4;
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(usd);
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 2,
+    }).format(usd);
   }
   if (lang === "pl") return price;
   const numericPLN = Number(String(price).replace(/[^\d.,]/g, "").replace(/\s/g, "").replace(",", "."));
   if (!isFinite(numericPLN)) return price;
   const usd = numericPLN / 4;
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(usd);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(usd);
 }
 
+/* ========= PODGLĄD KATEGORII ========= */
 function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltItem[]; lang: Lang }) {
   const [active, setActive] = useState(0);
-  const [heroIdx, setHeroIdx] = useState(0);
 
+  // >>> HOOKI ZAWSZE NA GÓRZE <<<
+  const [heroIdx, setHeroIdx] = useState(0); // index zdjęcia w galerii aktywnego paska
   useEffect(() => setHeroIdx(0), [active]);
 
   const VISIBLE = 4;
@@ -230,9 +200,11 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
   const maxScrollIndex = Math.max(0, thumbs.length - VISIBLE);
   const scrollUp = () => setScrollIndex((s) => Math.max(0, s - 1));
   const scrollDown = () => setScrollIndex((s) => Math.min(maxScrollIndex, s + 1));
+
   const goPrev = () => setHeroIdx((i) => (i > 0 ? i - 1 : Math.max(0, gallery.length - 1)));
   const goNext = () => setHeroIdx((i) => (i < gallery.length - 1 ? i + 1 : 0));
 
+  // DOPIERO TERAZ ewentualny wczesny return
   if (!belts.length) return null;
 
   return (
@@ -241,8 +213,10 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
         <h1 className="font-serif text-2xl md:text-3xl tracking-wide">Craft Symphony - {title}</h1>
       </div>
 
+      {/* HERO pionowy + kolumna miniaturek po prawej (desktop) */}
       <div className="relative">
         <div className="hidden md:grid grid-cols-[1fr_auto] gap-4 items-start">
+          {/* HERO – pionowy, obraz zawsze pasuje (contain) + watermark + strzałki */}
           <div className="relative w-full">
             <div className="relative w-full aspect-[3/4] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100">
               <AnimatePresence mode="wait">
@@ -257,23 +231,25 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
                   {gallery[heroIdx] ? (
                     <>
                       <Image
-                        src={gallery[heroIdx] as string}
+                        src={gallery[heroIdx]}
                         alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`}
                         fill
                         sizes="(max-width:1280px) 70vw, 800px"
                         className="object-cover object-center"
                       />
-                      <div className="absolute left-0 bottom-0 opacity-80">
-                        <div className="relative h-16 w-16 overflow-hidden rounded-md">
-                          <Image
-                            src="/images/znakwodny.png"
-                            alt="watermark"
-                            fill
-                            sizes="64px"
-                            className="object-cover pointer-events-none select-none"
-                          />
-                        </div>
-                      </div>
+                      {/* znak wodny */}
+<div className="absolute left-0 bottom-0 opacity-80">
+  <div className="relative h-16 w-16 overflow-hidden rounded-md">
+    <Image
+      src="/images/znakwodny.png"
+      alt="watermark"
+      fill
+      sizes="64px"
+      className="object-cover pointer-events-none select-none"
+    />
+  </div>
+</div>
+                      {/* strzałki */}
                       {gallery.length > 1 && (
                         <>
                           <button
@@ -301,6 +277,7 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
             </div>
           </div>
 
+          {/* MINIATURY – prawa kolumna, poza obrazem */}
           {thumbs.length > 1 && (
             <div className="sticky top-24 self-start">
               <div className="flex flex-col items-center gap-3">
@@ -343,7 +320,7 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
           )}
         </div>
 
-        {/* mobile */}
+        {/* MOBILE – hero pionowy + miniatury w rzędzie */}
         <div className="md:hidden mt-0">
           <div className="relative w-full aspect-[3/4] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100">
             <AnimatePresence mode="wait">
@@ -357,7 +334,7 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
               >
                 {gallery[heroIdx] ? (
                   <>
-                    <Image src={gallery[heroIdx] as string} alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`} fill sizes="100vw" className="object-contain" />
+                    <Image src={gallery[heroIdx]} alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`} fill sizes="100vw" className="object-contain" />
                     <div className="absolute left-2 bottom-2 opacity-80">
                       <div className="relative h-7 w-7">
                         <Image src="/images/znakwodny.png" alt="watermark" fill sizes="28px" className="object-contain pointer-events-none select-none" />
@@ -409,13 +386,15 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
         </div>
       </div>
 
-      {/* opis + rozmiarówka */}
+      {/* OPIS + ROZMIARÓWKA */}
       <div className="mt-6 md:mt-8 text-center">
         <div className="text-center mb-3">
           <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">{hero?.description ?? "—"}</p>
         </div>
 
         <div className="max-w-4xl mx-auto">
+
+          {/* nagłówek: Rozmiary w cm / Sizes in cm */}
           <div className="text-center mt-14 mb-2">
             <span className="text-[12px] uppercase tracking-wide text-neutral-500">{UI_STRINGS[lang].sizesInCm}</span>
           </div>
@@ -426,6 +405,7 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
             <div className="relative mx-auto w-2/3 md:w-1/3 aspect-[3/2]">
               <Image src="/images/belt2.png" alt={UI_STRINGS[lang].schemaAlt} fill sizes="(max-width:768px) 66vw, 33vw" className="object-contain" />
 
+              {/* LEWY bąbelek: sprzączka + podpis */}
               <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 left-0 -translate-x-[110%]">
                 <em className="text-xs text-neutral-500 not-italic italic">{UI_STRINGS[lang].buckleSize}</em>
                 <div className="inline-flex items-center gap-2 rounded-xl  px-4 text-sm text-neutral-600 font-medium min-w-[8rem] justify-center">
@@ -433,6 +413,7 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
                 </div>
               </div>
 
+              {/* PRAWY bąbelek: rozmiar główny + podpis */}
               <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 right-0 translate-x-[110%]">
                 <em className="text-xs text-neutral-500 not-italic italic">{UI_STRINGS[lang].mainSize}</em>
                 <div className="inline-flex items-center gap-2 rounded-xl  px-4 text-sm text-neutral-600 font-medium min-w-[8rem] justify-center">
@@ -453,9 +434,10 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
   );
 }
 
+
 /* ========= główna strona panelu ========= */
 export default function AdminPage() {
-  // stan logowania
+  // HOOKI
   const [password, setPassword] = useState("");
   const [ok, setOk] = useState(false);
 
@@ -465,17 +447,17 @@ export default function AdminPage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const [newCatName, setNewCatName] = useState("");
+
   const [editCat, setEditCat] = useState<Record<string, { name: string; slug: string }>>({});
 
-  // CREATE form
+  // CREATE form (z wieloma zdjęciami + EN)
   const [form, setForm] = useState({
     categoryId: "",
     title: "",
     titleEn: "",
     description:
       "Pasek ze skóry licowej najlepszej jakości, wycinany, farbiony ręcznie. Brzegi skóry malowane, zabezpieczony lakierem. Stosowane farby są głęboko penetrujące a co za tym idzie, nie złuszczają się, nie pękają, nie farbią ubrań gdy są mokre. Wszystkie paski są pakowane do ozdobnych pudełek drewnianych z logiem firmy. Wewnątrz pokryte miekką wykładziną.",
-    descriptionEn:
-      "A belt made of top-quality full-grain leather, hand-cut and hand-dyed. The edges are painted and sealed with lacquer. The dyes used are deeply penetrating, which means they do not peel, crack, or stain clothing when wet. All belts are packaged in decorative wooden boxes with the company logo, lined with soft fabric on the inside.",
+    descriptionEn: "A belt made of top-quality full-grain leather, hand-cut and hand-dyed. The edges are painted and sealed with lacquer. The dyes used are deeply penetrating, which means they do not peel, crack, or stain clothing when wet. All belts are packaged in decorative wooden boxes with the company logo, lined with soft fabric on the inside.",
     rozmiarMin: "",
     rozmiarMax: "",
     rozmiarGlowny: "",
@@ -484,12 +466,13 @@ export default function AdminPage() {
     numerPaska: "",
     files: [] as File[],
     previews: [] as string[],
-    imagesMeta: [] as Omit<ItemImage, "url">[],
+    imagesMeta: [] as Omit<ItemImage, "url">[], // alt-y/isPrimary/order dla uploadowanych
   });
 
-  const [autoTranslateEN] = useState(false);
-
+  const [autoTranslateEN, setAutoTranslateEN] = useState(false);
   const [enCache, setEnCache] = useState<Record<string, { titleEn: string; descriptionEn: string }>>({});
+
+  // EDIT state per item – z wieloma zdjęciami
   const [editItem, setEditItem] = useState<
     Record<
       string,
@@ -505,117 +488,54 @@ export default function AdminPage() {
         rozSprz: string;
         cenaPLN: string;
         numerPaska: string;
-        images: ItemImage[];
-        newFiles: File[];
-        newPreviews: string[];
-        newMeta: Omit<ItemImage, "url">[];
+
+        images: ItemImage[];     // istniejące (z URL-ami)
+        newFiles: File[];        // nowe do uploadu
+        newPreviews: string[];   // URL.createObjectURL
+        newMeta: Omit<ItemImage, "url">[]; // meta dla nowych
       }
     >
   >({});
 
   const [previewLang, setPreviewLang] = useState<Lang>("pl");
 
-  /* ====== WOOD state ====== */
-  const [wood, setWood] = useState<WoodItem[]>([]);
-  const [editWood, setEditWood] = useState<
-    Record<
-      string,
-      {
-        descriptionPl: string;
-        descriptionEn: string;
-        pricePLN: string;
-        order: string;
-        newFile?: File | null;
-        newPreview?: string | null;
-      }
-    >
-  >({});
-  const [cDescPl, setCDescPl] = useState("");
-  const [cDescEn, setCDescEn] = useState("");
-  const [cPrice, setCPrice] = useState<string>("");
-  const [cOrder, setCOrder] = useState<string>("");
-  const [cFile, setCFile] = useState<File | null>(null);
-  const [cPreview, setCPreview] = useState<string | null>(null);
-
-/* ===== AUTO-LOGIN (sprawdź czy sesja już istnieje) ===== */
-useEffect(() => {
-  (async () => {
+  /* ===== auth persistence ===== */
+  useEffect(() => {
     try {
-      // jeśli zalogowani, to to zadziała; jeśli nie — poleci 401 i złapie catch
-      const [catsData, itemsData, woodData] = await Promise.all([
-        authedJSON<Category[]>("/api/admin/categories"),
-        authedJSON<Item[]>("/api/admin/items"),
-        authedJSON<WoodItem[]>("/api/admin/wood"),
-      ]);
+      const saved = localStorage.getItem("admin_pwd");
+      if (saved) setPassword(saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  /* ===== fetch helper ===== */
+  const authedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const res = await fetch(input, {
+      ...init,
+      headers: { ...(init?.headers || {}), ...API_HEADERS(password) },
+      cache: "no-store",
+    });
+    if (res.status === 401) throw new Error("Błędne hasło");
+    return res;
+  };
+
+  const authedJSON = async <T = unknown>(input: RequestInfo | URL, init?: RequestInit): Promise<T | null | { raw: string }> => {
+    const res = await authedFetch(input, init);
+    return readJSON<T>(res);
+  };
+
+  const tryAuth = async () => {
+    try {
+      const catsData = (await authedJSON<Category[]>("/api/admin/categories")) ?? [];
       setCats(Array.isArray(catsData) ? catsData : []);
-      setItems(Array.isArray(itemsData) ? itemsData : []);
-      setWood(Array.isArray(woodData) ? [...woodData].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) : []);
+      await refreshItems();
       setOk(true);
-      setMsg(null);
+      localStorage.setItem("admin_pwd", password);
     } catch (e) {
       setOk(false);
-      setMsg(null); // brak błędu na wejściu — po prostu pokaż ekran logowania
+      setMsg(errToString(e));
     }
-  })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
-
-
-  /* ===== translator helper (opcjonalny) – Z AUTH bo to /api/admin/translate ===== */
-  async function translatePLtoEN(text: string): Promise<string> {
-    try {
-      const data = await authedJSON<{ text: string }>("/api/admin/translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, source: "pl", target: "en" }),
-      });
-      const maybe = data as { text?: unknown } | null;
-      if (maybe && typeof maybe.text === "string") return maybe.text;
-      return text;
-    } catch {
-      return text;
-    }
-  }
-
-  /* ===== manualne logowanie ===== */
-  const tryAuth = async () => {
-  setLoading(true);
-  setMsg(null);
-  try {
-    // NOWE: jedno logowanie — serwer ustawia cookie sesji (httpOnly)
-    const res = await plainFetch("/api/admin/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-      // ważne dla Next.js: fetch domyślnie wyśle i przyjmie cookies w tym samym originie
-      // (credentials: "include" nie jest potrzebne przy tym samym originie, ale można dodać:)
-      credentials: "same-origin",
-    });
-    await readJSON(res); // rzuci jeśli !ok
-
-    // Po sukcesie — po prostu pobierz dane, cookie już jest ustawione
-    const [catsData, itemsData, woodData] = await Promise.all([
-      authedJSON<Category[]>("/api/admin/categories"),
-      authedJSON<Item[]>("/api/admin/items"),
-      authedJSON<WoodItem[]>("/api/admin/wood"),
-    ]);
-    setCats(Array.isArray(catsData) ? catsData : []);
-    setItems(Array.isArray(itemsData) ? itemsData : []);
-    setWood(Array.isArray(woodData) ? [...woodData].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) : []);
-    setOk(true);
-    setPassword(""); // nie trzymaj hasła w pamięci
-  } catch (e) {
-    setOk(false);
-    setMsg(errToString(e));
-  } finally {
-    setLoading(false);
-  }
-};
-
-  const refreshItems = async () => {
-    const data = (await authedJSON<Item[]>("/api/admin/items")) ?? [];
-    const arr = Array.isArray(data) ? data : [];
-    setItems(arr);
   };
 
   const refreshCats = async () => {
@@ -623,14 +543,38 @@ useEffect(() => {
     setCats(Array.isArray(data) ? data : []);
   };
 
-  const refreshWood = async () => {
-    const data = (await authedJSON<WoodItem[]>("/api/admin/wood")) ?? [];
+  const refreshItems = async () => {
+    const data = (await authedJSON<Item[]>("/api/admin/items")) ?? [];
     const arr = Array.isArray(data) ? data : [];
-    arr.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    setWood(arr);
+    // fallback: jeżeli jakiś item nie ma orderów/isPrimary – generujemy
+    arr.forEach((it) => {
+      it.images = (it.images ?? [])
+        .map((img, idx) => ({ order: idx, isPrimary: idx === 0, altPl: "", altEn: "", ...img }))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    });
+    setItems(arr);
   };
 
-  /* ===== kategorie ===== */
+  /* ===== translator helper (opcjonalny) ===== */
+  async function translatePLtoEN(text: string): Promise<string> {
+    try {
+      const res = await authedFetch("/api/admin/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, source: "pl", target: "en" }),
+      });
+      const data = await readJSON<{ text: string }>(res);
+      const maybe = data as { text?: unknown } | null;
+      if (maybe && typeof maybe.text === "string") {
+        return maybe.text;
+      }
+      return text;
+    } catch {
+      return text;
+    }
+  }
+
+  /* ===== kategorie: create / edit / delete / reorder ===== */
   const submitCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -658,7 +602,6 @@ useEffect(() => {
       delete n[id];
       return n;
     });
-
   const saveCat = async (id: string) => {
     const data = editCat[id];
     if (!data) return;
@@ -695,6 +638,7 @@ useEffect(() => {
     }
   };
 
+  // zamiana order z sąsiadem
   const moveCat = async (id: string, dir: -1 | 1) => {
     const sorted = [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     const idx = sorted.findIndex((c) => c._id === id);
@@ -727,19 +671,23 @@ useEffect(() => {
     }
   };
 
-  /* ===== upload ===== */
+  /* ===== upload helpers ===== */
   const uploadOne = async (file: File): Promise<string> => {
     const fd = new FormData();
     fd.append("file", file);
-
-    const data = await authedJSON<UploadResp>("/api/admin/upload", { method: "POST", body: fd });
-    if (!isUploadResp(data)) throw new Error("Upload nie zwrócił poprawnej odpowiedzi (brak pola 'path').");
-    return data.path;
+    const upData = (await authedJSON<{ path: string }>("/api/admin/upload", { method: "POST", body: fd })) as
+      | { path: string }
+      | null;
+    if (!upData || typeof upData !== "object" || !("path" in upData)) {
+      throw new Error("Błędna odpowiedź z uploadu");
+    }
+    return (upData as { path: string }).path;
   };
 
   const uploadMany = async (files: File[]) => {
     const urls: string[] = [];
     for (const f of files) {
+      // upload sekwencyjny – prosto i stabilnie
       const url = await uploadOne(f);
       urls.push(url);
     }
@@ -747,6 +695,8 @@ useEffect(() => {
   };
 
   /* ===== items: create / edit / delete ===== */
+
+  // CREATE
   const submitItem = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -755,6 +705,7 @@ useEffect(() => {
       if (!form.files.length) throw new Error("Dodaj co najmniej jedno zdjęcie");
 
       const uploaded = await uploadMany(form.files);
+      // zlep meta + url-e
       const imgs: ItemImage[] = uploaded.map((url, i) => ({
         url,
         ...(form.imagesMeta[i] || {}),
@@ -781,8 +732,10 @@ useEffect(() => {
         }),
       });
 
+      // cleanup previews
       form.previews.forEach((u) => URL.revokeObjectURL(u));
 
+      // reset
       setForm({
         categoryId: "",
         title: "",
@@ -793,7 +746,7 @@ useEffect(() => {
         rozmiarMin: "",
         rozmiarMax: "",
         rozmiarGlowny: "",
-        rozSprz: "",
+        rozSprz: "", 
         cenaPLN: "",
         numerPaska: "",
         files: [],
@@ -810,9 +763,12 @@ useEffect(() => {
     }
   };
 
+  // START EDIT
   const startEditItem = (it: Item) => {
     const catId = typeof it.categoryId === "string" ? it.categoryId : it.categoryId?._id;
+    // posortuj po order
     const sortedImgs = [...(it.images ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    // jeżeli brak primary – ustaw pierwszy
     if (!sortedImgs.some((x) => x.isPrimary)) {
       if (sortedImgs[0]) sortedImgs[0].isPrimary = true;
     }
@@ -847,31 +803,39 @@ useEffect(() => {
       return n;
     });
 
+  // SAVE EDIT
   const saveItem = async (id: string) => {
     const data = editItem[id];
     if (!data) return;
     setLoading(true);
     setMsg(null);
     try {
+      // upload nowych
       const newUrls = await uploadMany(data.newFiles);
       const newImgs: ItemImage[] = newUrls.map((url, i) => ({
         url,
         ...(data.newMeta[i] || {}),
-        order: data.newMeta[i]?.order ?? data.images.length + i,
+        order: data.newMeta[i]?.order ?? (data.images.length + i),
         isPrimary: data.newMeta[i]?.isPrimary ?? false,
       }));
 
+      // sklej wszystko
       const merged = [...data.images, ...newImgs]
-        .map((img, idx) => ({ ...img, order: img.order ?? idx }))
+        .map((img, idx) => ({ ...img, order: img.order ?? idx })) // upewnij się, że każdy ma order
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
+      // gwarancja jednego primary
       if (!merged.some((x) => x.isPrimary)) {
         if (merged[0]) merged[0].isPrimary = true;
       } else {
+        // jeżeli kilka zaznaczonych, zostaw pierwszy
         let hit = false;
         merged.forEach((m) => {
-          if (m.isPrimary && !hit) hit = true;
-          else if (m.isPrimary && hit) m.isPrimary = false;
+          if (m.isPrimary && !hit) {
+            hit = true;
+          } else if (m.isPrimary && hit) {
+            m.isPrimary = false;
+          }
         });
       }
 
@@ -919,138 +883,7 @@ useEffect(() => {
     }
   };
 
-  /* ===== WOOD: create / edit / delete ===== */
-  const createWood = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMsg(null);
-    try {
-      if (!cFile) throw new Error("Dodaj zdjęcie");
-      const img = await uploadOne(cFile);
-      await authedJSON("/api/admin/wood", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          descriptionPl: cDescPl.trim(),
-          descriptionEn: cDescEn.trim() || undefined,
-          pricePLN: Number(cPrice),
-          image: img,
-          order: cOrder ? Number(cOrder) : undefined,
-        }),
-      });
-      if (cPreview) URL.revokeObjectURL(cPreview);
-      setCDescPl("");
-      setCDescEn("");
-      setCPrice("");
-      setCOrder("");
-      setCFile(null);
-      setCPreview(null);
-      await refreshWood();
-      setMsg("Dodano produkt WOOD");
-    } catch (e) {
-      setMsg(errToString(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startEditWood = (it: WoodItem) => {
-    setEditWood((s) => ({
-      ...s,
-      [it._id]: {
-        descriptionPl: it.descriptionPl || "",
-        descriptionEn: it.descriptionEn || "",
-        pricePLN: String(it.pricePLN ?? ""),
-        order: it.order != null ? String(it.order) : "",
-        newFile: null,
-        newPreview: null,
-      },
-    }));
-  };
-
-  const cancelEditWood = (id: string) => {
-    setEditWood((s) => {
-      const p = s[id]?.newPreview;
-      if (p) URL.revokeObjectURL(p);
-      const n = { ...s };
-      delete n[id];
-      return n;
-    });
-  };
-
-  const saveEditWood = async (id: string) => {
-    const data = editWood[id];
-    if (!data) return;
-    setLoading(true);
-    setMsg(null);
-    try {
-      let image: string | undefined;
-      if (data.newFile) image = await uploadOne(data.newFile);
-      await authedJSON(`/api/admin/wood/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          descriptionPl: data.descriptionPl.trim(),
-          descriptionEn: data.descriptionEn.trim() || undefined,
-          pricePLN: Number(data.pricePLN),
-          order: data.order ? Number(data.order) : null,
-          ...(image ? { image } : {}),
-        }),
-      });
-      cancelEditWood(id);
-      await refreshWood();
-      setMsg("Zapisano WOOD");
-    } catch (e) {
-      setMsg(errToString(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteWood = async (id: string) => {
-    if (!confirm("Usunąć produkt WOOD?")) return;
-    setLoading(true);
-    setMsg(null);
-    try {
-      await authedJSON(`/api/admin/wood/${id}`, { method: "DELETE" });
-      await refreshWood();
-      setMsg("Usunięto WOOD");
-    } catch (e) {
-      setMsg(errToString(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const moveWood = async (id: string, dir: -1 | 1) => {
-    const sorted = [...wood].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    const idx = sorted.findIndex((i) => i._id === id);
-    const j = idx + dir;
-    if (idx < 0 || j < 0 || j >= sorted.length) return;
-    const a = sorted[idx], b = sorted[j];
-    const aOrder = a.order ?? idx, bOrder = b.order ?? j;
-    setLoading(true);
-    setMsg(null);
-    try {
-      await authedJSON(`/api/admin/wood/${a._id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ order: bOrder }),
-      });
-      await authedJSON(`/api/admin/wood/${b._id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ order: aOrder }),
-      });
-      await refreshWood();
-    } catch (e) {
-      setMsg(errToString(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /* ===== dane do podglądu (BELTS) ===== */
+  /* ===== dane do podglądu ===== */
   const groupedForPreview = useMemo(() => {
     const sortedCats = [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return sortedCats.map((c) => {
@@ -1077,6 +910,7 @@ useEffect(() => {
           upperSize: `${Math.max(i.rozmiarMin, i.rozmiarMax)} cm`,
           lowerSize: `${Math.min(i.rozmiarMin, i.rozmiarMax)} cm`,
           mainSize: typeof i.rozmiarGlowny === "number" && !isNaN(i.rozmiarGlowny) ? `${i.rozmiarGlowny} cm` : undefined,
+          // NOWE: sprzączka → bąbelek po lewej
           buckleSize: typeof i.rozSprz === "number" && !isNaN(i.rozSprz) ? `${i.rozSprz} cm` : undefined,
           image: primary?.url,
           beltNo: i.numerPaska,
@@ -1087,7 +921,7 @@ useEffect(() => {
     });
   }, [cats, items, previewLang, autoTranslateEN, enCache]);
 
-  // opcjonalna autotranslacja EN (cache)
+  // auto-translate cache — efekt
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1114,9 +948,7 @@ useEffect(() => {
       <main className="min-h-screen bg-[#f5f5ef] text-neutral-900 flex items-center justify-center p-6">
         <div className="w-full max-w-sm rounded-2xl border border-neutral-300 bg-white p-6 shadow-sm">
           <h1 className="text-lg font-serif mb-2">Panel administracyjny</h1>
-<p className="text-sm text-neutral-600 mb-4">
-  Podaj hasło do panelu. Po zalogowaniu sesja będzie utrzymywana w przeglądarce.
-</p>
+          <p className="text-sm text-neutral-600 mb-4">Podaj hasło, aby przejść dalej.</p>
           <input
             type="password"
             value={password}
@@ -1124,9 +956,7 @@ useEffect(() => {
             placeholder="hasło"
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 mb-3 outline-none focus:ring-2 focus:ring-neutral-900/10"
           />
-          <button onClick={tryAuth} className="w-full px-4 py-2 rounded-lg bg-neutral-900 text-white">
-            {loading ? "Logowanie…" : "Zaloguj"}
-          </button>
+          <button onClick={tryAuth} className="w-full px-4 py-2 rounded-lg bg-neutral-900 text-white">Zaloguj</button>
           {msg && <p className="mt-3 text-sm text-red-600">{msg}</p>}
         </div>
       </main>
@@ -1135,6 +965,14 @@ useEffect(() => {
 
   /* ===== main admin UI ===== */
   const sortedCats = [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  // helpers UI do reorder/toggle primary w CREATE
+  const setCreateImgMeta = (idx: number, patch: Partial<Omit<ItemImage, "url">>) =>
+    setForm((s) => {
+      const meta = [...s.imagesMeta];
+      meta[idx] = { ...meta[idx], ...patch };
+      return { ...s, imagesMeta: meta };
+    });
 
   const ensureOnePrimaryCreate = (setIndexPrimary: number) =>
     setForm((s) => {
@@ -1152,6 +990,7 @@ useEffect(() => {
       [files[idx], files[j]] = [files[j], files[idx]];
       [previews[idx], previews[j]] = [previews[j], previews[idx]];
       [meta[idx], meta[j]] = [meta[j], meta[idx]];
+      // przelicz ordery
       const withOrder = meta.map((m, i) => ({ ...m, order: i }));
       return { ...s, files, previews, imagesMeta: withOrder };
     });
@@ -1161,9 +1000,16 @@ useEffect(() => {
       <div className="mx-auto max-w-7xl space-y-10">
         <header className="flex items-center justify-between">
           <h1 className="text-xl md:text-2xl font-serif">Panel administracyjny</h1>
-          <Link href="/" className="rounded-lg border px-4 py-2 hover:bg-neutral-50" title="Powrót na stronę">
-            ← Strona główna
-          </Link>
+          <div className="flex items-center gap-2 text-xs text-neutral-500">
+            <button
+              onClick={() => setAutoTranslateEN((v) => !v)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ${autoTranslateEN ? "bg-neutral-900 text-white border-neutral-900" : "bg-white"}`}
+              title="Automatyczne tłumaczenie PL→EN (podgląd)"
+            >
+              <Languages className="h-4 w-4" /> EN auto
+            </button>
+            <span>Hasło zapisane lokalnie</span>
+          </div>
         </header>
 
         {/* KATEGORIE */}
@@ -1211,22 +1057,8 @@ useEffect(() => {
                   )}
 
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => moveCat(c._id, -1)}
-                      disabled={!canUp}
-                      className={`p-2 rounded ${canUp ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`}
-                      title="Przenieś w górę"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      onClick={() => moveCat(c._id, 1)}
-                      disabled={!canDown}
-                      className={`p-2 rounded ${canDown ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`}
-                      title="Przenieś w dół"
-                    >
-                      ↓
-                    </button>
+                    <button onClick={() => moveCat(c._id, -1)} disabled={!canUp} className={`p-2 rounded ${canUp ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`} title="Przenieś w górę">↑</button>
+                    <button onClick={() => moveCat(c._id, 1)} disabled={!canDown} className={`p-2 rounded ${canDown ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`} title="Przenieś w dół">↓</button>
 
                     {!isEditing ? (
                       <>
@@ -1255,74 +1087,30 @@ useEffect(() => {
           </ul>
         </section>
 
-        {/* PRZEDMIOTY (BELTS) */}
+        {/* PRZEDMIOTY */}
         <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm text-gray-800">
           <h2 className="font-medium mb-4">Dodaj pasek</h2>
 
           <form onSubmit={submitItem} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <select
-                value={form.categoryId}
-                onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
-                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-                required
-              >
+              <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required>
                 <option value="">Wybierz kategorię…</option>
                 {sortedCats.map((c) => (
-                  <option key={c._id} value={c._id}>
-                    {c.name}
-                  </option>
+                  <option key={c._id} value={c._id}>{c.name}</option>
                 ))}
               </select>
-              <input
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                placeholder="Tytuł (PL)"
-                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-                required
-              />
-              <input
-                value={form.titleEn}
-                onChange={(e) => setForm({ ...form, titleEn: e.target.value })}
-                placeholder="Tytuł (EN)"
-                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-              />
+              <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Tytuł (PL)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
+              <input value={form.titleEn} onChange={(e) => setForm({ ...form, titleEn: e.target.value })} placeholder="Tytuł (EN)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <textarea
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Opis (PL)"
-                className="w-full h-[200px] rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-                rows={3}
-              />
-              <textarea
-                value={form.descriptionEn}
-                onChange={(e) => setForm({ ...form, descriptionEn: e.target.value })}
-                placeholder="Opis (EN)"
-                className="w-full h-[200px]  rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-                rows={3}
-              />
+              <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Opis (PL)" className="w-full h-[200px] rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
+              <textarea value={form.descriptionEn} onChange={(e) => setForm({ ...form, descriptionEn: e.target.value })} placeholder="Opis (EN)" className="w-full h-[200px]  rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input
-                type="number"
-                value={form.rozmiarMin}
-                onChange={(e) => setForm({ ...form, rozmiarMin: e.target.value })}
-                placeholder="Rozmiar min (cm)"
-                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-                required
-              />
-              <input
-                type="number"
-                value={form.rozmiarMax}
-                onChange={(e) => setForm({ ...form, rozmiarMax: e.target.value })}
-                placeholder="Rozmiar max (cm)"
-                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-                required
-              />
+              <input type="number" value={form.rozmiarMin} onChange={(e) => setForm({ ...form, rozmiarMin: e.target.value })} placeholder="Rozmiar min (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
+              <input type="number" value={form.rozmiarMax} onChange={(e) => setForm({ ...form, rozmiarMax: e.target.value })} placeholder="Rozmiar max (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
               <input
                 type="number"
                 value={form.rozSprz}
@@ -1330,32 +1118,12 @@ useEffect(() => {
                 placeholder="Rozmiar sprzączki (cm)"
                 className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
               />
-              <input
-                type="number"
-                value={form.rozmiarGlowny}
-                onChange={(e) => setForm({ ...form, rozmiarGlowny: e.target.value })}
-                placeholder="Rozmiar główny (cm)"
-                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-              />
+              <input type="number" value={form.rozmiarGlowny} onChange={(e) => setForm({ ...form, rozmiarGlowny: e.target.value })} placeholder="Rozmiar główny (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input
-                type="number"
-                value={form.cenaPLN}
-                onChange={(e) => setForm({ ...form, cenaPLN: e.target.value })}
-                placeholder="Cena (PLN)"
-                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-                required
-              />
-              <input
-                type="number"
-                value={form.numerPaska}
-                onChange={(e) => setForm({ ...form, numerPaska: e.target.value })}
-                placeholder="Nr paska"
-                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-                required
-              />
+              <input type="number" value={form.cenaPLN} onChange={(e) => setForm({ ...form, cenaPLN: e.target.value })} placeholder="Cena (PLN)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
+              <input type="number" value={form.numerPaska} onChange={(e) => setForm({ ...form, numerPaska: e.target.value })} placeholder="Nr paska" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
             </div>
 
             {/* UPLOAD WIELOKROTNY */}
@@ -1373,7 +1141,7 @@ useEffect(() => {
                     const meta: Omit<ItemImage, "url">[] = files.map((_, i) => ({
                       altPl: "",
                       altEn: "",
-                      isPrimary: form.files.length === 0 && i === 0,
+                      isPrimary: form.files.length === 0 && i === 0, // jeśli pierwsze zdjęcia – ustaw primary na pierwszym
                       order: form.files.length + i,
                     }));
                     setForm((s) => ({
@@ -1388,6 +1156,7 @@ useEffect(() => {
                 <span className="text-lg">Wrzuć zdjęcia</span>
               </label>
 
+              {/* Galeria draft */}
               {form.previews.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {form.previews.map((src, i) => {
@@ -1398,12 +1167,7 @@ useEffect(() => {
                         <div className="relative w-full aspect-[4/3]">
                           <Image src={src} alt={`preview-${i + 1}`} fill className="object-cover" />
                           <div className="absolute top-2 left-2 flex gap-1">
-                            <button
-                              type="button"
-                              onClick={() => ensureOnePrimaryCreate(i)}
-                              className={`px-2 py-1 text-xs rounded ${primary ? "bg-yellow-400/90" : "bg-white/80 border"}`}
-                              title={primary ? "Zdjęcie główne" : "Ustaw jako główne"}
-                            >
+                            <button type="button" onClick={() => ensureOnePrimaryCreate(i)} className={`px-2 py-1 text-xs rounded ${primary ? "bg-yellow-400/90" : "bg-white/80 border"}`} title={primary ? "Zdjęcie główne" : "Ustaw jako główne"}>
                               {primary ? <Star className="h-3.5 w-3.5" /> : <StarOff className="h-3.5 w-3.5" />}
                             </button>
                           </div>
@@ -1424,12 +1188,14 @@ useEffect(() => {
                               setForm((s) => {
                                 const files = [...s.files];
                                 const previews = [...s.previews];
-                                const meta2 = [...s.imagesMeta];
+                                const meta = [...s.imagesMeta];
                                 URL.revokeObjectURL(previews[i]);
                                 files.splice(i, 1);
                                 previews.splice(i, 1);
-                                meta2.splice(i, 1);
-                                const withOrder = meta2.map((m, idx) => ({ ...m, order: idx }));
+                                meta.splice(i, 1);
+                                // przelicz order
+                                const withOrder = meta.map((m, idx) => ({ ...m, order: idx }));
+                                // jeżeli usunęliśmy primary – ustaw 0 jako primary
                                 if (!withOrder.some((m) => m.isPrimary) && withOrder[0]) withOrder[0].isPrimary = true;
                                 return { ...s, files, previews, imagesMeta: withOrder };
                               })
@@ -1485,14 +1251,14 @@ useEffect(() => {
                               <div className="font-medium text-base">{it.title}</div>
                               <div className="text-neutral-600">EN: {it.titleEn || "—"}</div>
                               <div className="text-neutral-600">Kategoria: {catName}</div>
-                              <div className="text-neutral-600">
-                                Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm
-                              </div>
-                              {typeof it.rozmiarGlowny === "number" && <div className="text-neutral-600">Rozmiar główny: {it.rozmiarGlowny} cm</div>}
-                              {typeof it.rozSprz === "number" && <div className="text-neutral-600">Sprzączka: {it.rozSprz} cm</div>}
-                              <div className="text-neutral-600">
-                                Cena: {it.cenaPLN} PLN, Nr: {it.numerPaska}
-                              </div>
+                              <div className="text-neutral-600">Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm</div>
+                              {typeof it.rozmiarGlowny === "number" && (
+                                <div className="text-neutral-600">Rozmiar główny: {it.rozmiarGlowny} cm</div>
+                              )}
+                              {typeof it.rozSprz === "number" && (
+                                <div className="text-neutral-600">Sprzączka: {it.rozSprz} cm</div>
+                              )}
+                              <div className="text-neutral-600">Cena: {it.cenaPLN} PLN, Nr: {it.numerPaska}</div>
 
                               <div className="mt-3 flex flex-wrap gap-2">
                                 <button onClick={() => startEditItem(it)} className="px-4 py-2 rounded-lg border hover:bg-neutral-50 text-neutral-700 inline-flex items-center gap-1.5">
@@ -1505,95 +1271,39 @@ useEffect(() => {
                             </div>
                           ) : (
                             <div className="flex-1 grid grid-cols-1 gap-2 text-sm">
-                              <select
-                                value={editing.categoryId}
-                                onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], categoryId: e.target.value } }))}
-                                className="rounded-xl border border-neutral-300 px-3 py-2"
-                              >
+                              <select value={editing.categoryId} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], categoryId: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2">
                                 {sortedCats.map((sc) => (
-                                  <option key={sc._id} value={sc._id}>
-                                    {sc.name}
-                                  </option>
+                                  <option key={sc._id} value={sc._id}>{sc.name}</option>
                                 ))}
                               </select>
-                              <input
-                                value={editing.title}
-                                onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], title: e.target.value } }))}
-                                className="rounded-xl border border-neutral-300 px-3 py-2"
-                                placeholder="Tytuł (PL)"
-                              />
-                              <textarea
-                                value={editing.description}
-                                onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], description: e.target.value } }))}
-                                className="rounded-xl border border-neutral-300 px-3 py-2"
-                                placeholder="Opis (PL)"
-                                rows={2}
-                              />
+                              <input value={editing.title} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], title: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Tytuł (PL)" />
+                              <textarea value={editing.description} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], description: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Opis (PL)" rows={2} />
 
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                <input
-                                  value={editing.titleEn || ""}
-                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], titleEn: e.target.value } }))}
-                                  className="rounded-xl border border-neutral-300 px-3 py-2"
-                                  placeholder="Title (EN)"
-                                />
-                                <input
-                                  value={editing.descriptionEn || ""}
-                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], descriptionEn: e.target.value } }))}
-                                  className="rounded-xl border border-neutral-300 px-3 py-2"
-                                  placeholder="Description (EN)"
-                                />
+                                <input value={editing.titleEn || ""} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], titleEn: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Title (EN)" />
+                                <input value={editing.descriptionEn || ""} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], descriptionEn: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Description (EN)" />
                               </div>
 
                               <div className="grid grid-cols-3 gap-2">
-                                <input
-                                  type="number"
-                                  value={editing.rozmiarMin}
-                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMin: e.target.value } }))}
-                                  className="rounded-xl border border-neutral-300 px-3 py-2"
-                                  placeholder="Min"
-                                />
-                                <input
-                                  type="number"
-                                  value={editing.rozmiarMax}
-                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMax: e.target.value } }))}
-                                  className="rounded-xl border border-neutral-300 px-3 py-2"
-                                  placeholder="Max"
-                                />
-                                <input
-                                  type="number"
-                                  value={editing.rozmiarGlowny}
-                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarGlowny: e.target.value } }))}
-                                  className="rounded-xl border border-neutral-300 px-3 py-2"
-                                  placeholder="Główny"
-                                />
+                                <input type="number" value={editing.rozmiarMin} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMin: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Min" />
+                                <input type="number" value={editing.rozmiarMax} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMax: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Max" />
+                                <input type="number" value={editing.rozmiarGlowny} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarGlowny: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Główny" />
                                 <input
                                   type="number"
                                   value={editing.rozSprz}
-                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozSprz: e.target.value } }))}
+                                  onChange={(e) =>
+                                    setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozSprz: e.target.value } }))
+                                  }
                                   className="rounded-xl border border-neutral-300 px-3 py-2"
                                   placeholder="Sprzączka"
                                 />
                               </div>
-
                               <div className="grid grid-cols-2 gap-2">
-                                <input
-                                  type="number"
-                                  value={editing.cenaPLN}
-                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], cenaPLN: e.target.value } }))}
-                                  className="rounded-xl border border-neutral-300 px-3 py-2"
-                                  placeholder="Cena"
-                                />
-                                <input
-                                  type="number"
-                                  value={editing.numerPaska}
-                                  onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], numerPaska: e.target.value } }))}
-                                  className="rounded-xl border border-neutral-300 px-3 py-2"
-                                  placeholder="Nr"
-                                />
+                                <input type="number" value={editing.cenaPLN} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], cenaPLN: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Cena" />
+                                <input type="number" value={editing.numerPaska} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], numerPaska: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Nr" />
                               </div>
 
-                              {/* istniejące zdjęcia */}
+                              {/* ISTNIEJĄCE ZDJĘCIA */}
                               <div className="mt-2">
                                 <div className="text-xs text-neutral-500 mb-1">Zdjęcia</div>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
@@ -1627,6 +1337,7 @@ useEffect(() => {
                                                 if (i > 0) {
                                                   [imgs[i - 1], imgs[i]] = [imgs[i], imgs[i - 1]];
                                                 }
+                                                // przelicz ordery
                                                 imgs.forEach((m, idx) => (m.order = idx));
                                                 return { ...s, [it._id]: { ...cur, images: imgs } };
                                               })
@@ -1657,6 +1368,7 @@ useEffect(() => {
                                         </div>
                                       </div>
                                       <div className="p-2 space-y-1">
+                                    
                                         <button
                                           type="button"
                                           className="w-full rounded border px-2 py-1 text-xs hover:bg-red-50 text-red-600"
@@ -1679,7 +1391,7 @@ useEffect(() => {
                                 </div>
                               </div>
 
-                              {/* nowe zdjęcia */}
+                              {/* DODAJ NOWE ZDJĘCIA */}
                               <div className="mt-2">
                                 <label className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-300 px-3 py-3 cursor-pointer hover:bg-neutral-50">
                                   <input
@@ -1694,12 +1406,7 @@ useEffect(() => {
                                       setEditItem((s) => {
                                         const cur = s[it._id];
                                         const startOrder = cur.images.length + cur.newFiles.length;
-                                        const newMeta = files.map((_, idx) => ({
-                                          altPl: "",
-                                          altEn: "",
-                                          isPrimary: false,
-                                          order: startOrder + idx,
-                                        }));
+                                        const newMeta = files.map((_, idx) => ({ altPl: "", altEn: "", isPrimary: false, order: startOrder + idx }));
                                         return {
                                           ...s,
                                           [it._id]: {
@@ -1715,11 +1422,12 @@ useEffect(() => {
                                   <ImageIcon className="h-5 w-5" /> Dodaj zdjęcia
                                 </label>
 
+                                {/* podgląd nowych */}
                                 {editing.newPreviews.length > 0 && (
                                   <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
                                     {editing.newPreviews.map((src, i) => {
                                       const meta = editing.newMeta[i] || {};
-                                      const absoluteIndex = i;
+                                      const absoluteIndex = i; // w nowej paczce
                                       return (
                                         <div key={i} className="rounded-lg border overflow-hidden">
                                           <div className="relative w-full aspect-[4/3]">
@@ -1731,6 +1439,7 @@ useEffect(() => {
                                                   setEditItem((s) => {
                                                     const cur = s[it._id];
                                                     const nm = cur.newMeta.map((m, idx) => ({ ...m, isPrimary: idx === absoluteIndex }));
+                                                    // kasujemy primary w istniejących
                                                     const imgs = cur.images.map((m) => ({ ...m, isPrimary: false }));
                                                     return { ...s, [it._id]: { ...cur, images: imgs, newMeta: nm } };
                                                   })
@@ -1818,263 +1527,27 @@ useEffect(() => {
           </div>
         </section>
 
-        {/* WOOD */}
-        <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-medium">WOOD — produkty</h2>
-            {loading && <div className="text-sm text-neutral-500">Ładowanie…</div>}
-          </div>
-
-          {/* Create WOOD */}
-          <form onSubmit={createWood} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="space-y-3">
-              <label className="block text-sm text-neutral-600">Opis (PL)</label>
-              <textarea
-                value={cDescPl}
-                onChange={(e) => setCDescPl(e.target.value)}
-                className="w-full h-32 rounded-xl border px-3 py-2"
-                required
-              />
-              <label className="block text-sm text-neutral-600">Opis (EN)</label>
-              <textarea
-                value={cDescEn}
-                onChange={(e) => setCDescEn(e.target.value)}
-                className="w-full h-32 rounded-xl border px-3 py-2"
-              />
-            </div>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-neutral-600">Cena (PLN)</label>
-                  <input
-                    type="number"
-                    value={cPrice}
-                    onChange={(e) => setCPrice(e.target.value)}
-                    className="w-full rounded-xl border px-3 py-2"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-neutral-600">Kolejność</label>
-                  <input
-                    type="number"
-                    value={cOrder}
-                    onChange={(e) => setCOrder(e.target.value)}
-                    className="w-full rounded-xl border px-3 py-2"
-                    placeholder="opcjonalnie"
-                  />
-                </div>
-              </div>
-
-              <label className="block text-sm text-neutral-600">Zdjęcie</label>
-              <label className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-300 px-4 py-6 cursor-pointer hover:bg-neutral-50">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = (e.target.files && e.target.files[0]) || null;
-                    if (!f) return;
-                    if (cPreview) URL.revokeObjectURL(cPreview);
-                    setCFile(f);
-                    setCPreview(URL.createObjectURL(f));
-                  }}
-                />
-                <ImageIcon className="h-5 w-5" />
-                <span>Wrzuć zdjęcie</span>
-              </label>
-
-              {cPreview && (
-                <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border">
-                  <Image src={cPreview} alt="preview" fill className="object-cover" />
-                  <button
-                    type="button"
-                    className="absolute top-2 right-2 px-2 py-1 text-xs rounded bg-white/85 border"
-                    onClick={() => {
-                      if (cPreview) URL.revokeObjectURL(cPreview);
-                      setCPreview(null);
-                      setCFile(null);
-                    }}
-                  >
-                    Anuluj
-                  </button>
-                </div>
-              )}
-
-              <button disabled={loading} className="w-full rounded-xl bg-neutral-900 text-white px-6 py-3 inline-flex items-center justify-center gap-2">
-                <Plus className="h-4 w-4" /> {loading ? "Zapisywanie…" : "Dodaj WOOD"}
-              </button>
-            </div>
-          </form>
-
-          {/* List WOOD */}
-          {wood.length === 0 ? (
-            <div className="text-sm text-neutral-500">Brak produktów WOOD</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {wood.map((it, idx) => {
-                const ed = editWood[it._id];
-                const canUp = idx > 0;
-                const canDown = idx < wood.length - 1;
-                return (
-                  <div key={it._id} className="rounded-2xl border p-3 bg-white">
-                    <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border">
-                      <Image src={ed?.newPreview || it.image} alt="wood" fill className="object-cover" />
-                    </div>
-
-                    {!ed ? (
-                      <>
-                        <div className="mt-3 text-sm text-neutral-700 line-clamp-3">{it.descriptionPl}</div>
-                        <div className="text-xs text-neutral-500">EN: {it.descriptionEn || "—"}</div>
-                        <div className="mt-2 text-sm">Cena: {it.pricePLN} PLN</div>
-                        <div className="text-xs text-neutral-500">Kolejność: {it.order ?? "—"}</div>
-
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            onClick={() => moveWood(it._id, -1)}
-                            disabled={!canUp}
-                            title="W górę"
-                            className={`px-3 py-1.5 rounded border ${canUp ? "hover:bg-neutral-50" : "opacity-40 cursor-not-allowed"}`}
-                          >
-                            <ArrowUpAZ className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => moveWood(it._id, 1)}
-                            disabled={!canDown}
-                            title="W dół"
-                            className={`px-3 py-1.5 rounded border ${canDown ? "hover:bg-neutral-50" : "opacity-40 cursor-not-allowed"}`}
-                          >
-                            <ArrowDownAZ className="h-4 w-4" />
-                          </button>
-
-                          <button
-                            onClick={() => startEditWood(it)}
-                            className="px-3 py-1.5 rounded border hover:bg-neutral-50 inline-flex items-center gap-1.5"
-                          >
-                            <Pencil className="h-4 w-4" /> Edytuj
-                          </button>
-                          <button
-                            onClick={() => deleteWood(it._id)}
-                            className="px-3 py-1.5 rounded border hover:bg-red-50 text-red-600 inline-flex items-center gap-1.5"
-                          >
-                            <Trash2 className="h-4 w-4" /> Usuń
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="mt-3 grid grid-cols-1 gap-2 text-sm">
-                        <textarea
-                          value={ed.descriptionPl}
-                          onChange={(e) => setEditWood((s) => ({ ...s, [it._id]: { ...s[it._id], descriptionPl: e.target.value } }))}
-                          className="rounded border px-2 py-1.5"
-                          rows={3}
-                          placeholder="Opis PL"
-                        />
-                        <textarea
-                          value={ed.descriptionEn}
-                          onChange={(e) => setEditWood((s) => ({ ...s, [it._id]: { ...s[it._id], descriptionEn: e.target.value } }))}
-                          className="rounded border px-2 py-1.5"
-                          rows={3}
-                          placeholder="Opis EN"
-                        />
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            type="number"
-                            value={ed.pricePLN}
-                            onChange={(e) => setEditWood((s) => ({ ...s, [it._id]: { ...s[it._id], pricePLN: e.target.value } }))}
-                            className="rounded border px-2 py-1.5"
-                            placeholder="Cena PLN"
-                          />
-                          <input
-                            type="number"
-                            value={ed.order}
-                            onChange={(e) => setEditWood((s) => ({ ...s, [it._id]: { ...s[it._id], order: e.target.value } }))}
-                            className="rounded border px-2 py-1.5"
-                            placeholder="Kolejność"
-                          />
-                        </div>
-
-                        <label className="flex items-center justify-center gap-2 rounded border-2 border-dashed px-3 py-3 cursor-pointer hover:bg-neutral-50">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const f = (e.target.files && e.target.files[0]) || null;
-                              setEditWood((s) => {
-                                const cur = s[it._id];
-                                if (!cur) return s;
-                                if (cur.newPreview) URL.revokeObjectURL(cur.newPreview);
-                                return {
-                                  ...s,
-                                  [it._id]: {
-                                    ...cur,
-                                    newFile: f,
-                                    newPreview: f ? URL.createObjectURL(f) : null,
-                                  },
-                                };
-                              });
-                            }}
-                          />
-                          <ImageIcon className="h-4 w-4" /> Zmień zdjęcie
-                        </label>
-
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <button
-                            onClick={() => saveEditWood(it._id)}
-                            className="px-3 py-1.5 rounded border hover:bg-green-50 text-green-700 inline-flex items-center gap-1.5"
-                          >
-                            <Save className="h-4 w-4" /> Zapisz
-                          </button>
-                          <button
-                            onClick={() => cancelEditWood(it._id)}
-                            className="px-3 py-1.5 rounded border hover:bg-neutral-50 inline-flex items-center gap-1.5"
-                          >
-                            <X className="h-4 w-4" /> Anuluj
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* PODGLĄD pasków */}
+        {/* PODGLĄD (jak na stronie głównej) */}
         <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-medium">{UI_STRINGS[previewLang].preview}</h2>
             <div className="flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-1.5 py-1">
-              <button
-                onClick={() => setPreviewLang("pl")}
-                aria-pressed={previewLang === "pl"}
-                title="Polski"
-                className={`inline-flex items-center justify-center rounded-md p-1.5 ${previewLang === "pl" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
-              >
+              <button onClick={() => setPreviewLang("pl")} aria-pressed={previewLang === "pl"} title="Polski" className={`inline-flex items-center justify-center rounded-md p-1.5 ${previewLang === "pl" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}>
                 <Image src="/images/poland.png" alt="" width={20} height={14} className="rounded-[2px]" />
               </button>
-              <button
-                onClick={() => setPreviewLang("en")}
-                aria-pressed={previewLang === "en"}
-                title="English"
-                className={`inline-flex items-center justify-center rounded-md p-1.5 ${previewLang === "en" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}
-              >
+              <button onClick={() => setPreviewLang("en")} aria-pressed={previewLang === "en"} title="English" className={`inline-flex items-center justify-center rounded-md p-1.5 ${previewLang === "en" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}>
                 <Image src="/images/england.png" alt="" width={20} height={14} className="rounded-[2px]" />
               </button>
             </div>
           </div>
 
           <div className="space-y-16">
-            {groupedForPreview
-              .filter((g) => g.belts.length)
-              .map((g, idx) => (
-                <div key={idx}>
-                  <CategoryPreview title={g.title} belts={g.belts} lang={previewLang} />
-                  <div className="mt-6 mx-auto w-full h-px bg-neutral-200" />
-                </div>
-              ))}
+            {groupedForPreview.filter((g) => g.belts.length).map((g, idx) => (
+              <div key={idx}>
+                <CategoryPreview title={g.title} belts={g.belts} lang={previewLang} />
+                <div className="mt-6 mx-auto w-full h-px bg-neutral-200" />
+              </div>
+            ))}
             {groupedForPreview.every((g) => !g.belts.length) && <div className="text-sm text-neutral-500">Brak danych do podglądu</div>}
           </div>
         </section>
