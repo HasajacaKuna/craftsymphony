@@ -138,6 +138,16 @@ type Item = {
   images: ItemImage[];
 };
 
+/* ==== WOOD ==== */
+type WoodItem = {
+  _id: string;
+  descriptionPl: string;
+  descriptionEn?: string;
+  pricePLN: number;
+  image: string; // URL
+  order?: number | null;
+};
+
 /* ========= preview UI ========= */
 type BeltItem = {
   name: string;
@@ -529,27 +539,48 @@ export default function AdminPage() {
 
   const [previewLang, setPreviewLang] = useState<Lang>("pl");
 
+  /* ====== WOOD state ====== */
+  const [wood, setWood] = useState<WoodItem[]>([]);
+  const [editWood, setEditWood] = useState<
+    Record<
+      string,
+      {
+        descriptionPl: string;
+        descriptionEn: string;
+        pricePLN: string;
+        order: string;
+        newFile?: File | null;
+        newPreview?: string | null;
+      }
+    >
+  >({});
+  const [cDescPl, setCDescPl] = useState("");
+  const [cDescEn, setCDescEn] = useState("");
+  const [cPrice, setCPrice] = useState<string>("");
+  const [cOrder, setCOrder] = useState<string>("");
+  const [cFile, setCFile] = useState<File | null>(null);
+  const [cPreview, setCPreview] = useState<string | null>(null);
+
   /* ===== AUTO-LOGIN ===== */
   useEffect(() => {
     try {
       const saved = localStorage.getItem("admin_pwd");
       if (!saved) return;
-      // ustaw wewnętrzne hasło, żeby dalsze wywołania miały nagłówek
       setPassword(saved);
       (async () => {
         try {
-          // test autoryzacji z zapisanym hasłem (overridePwd)
           await authedJSON("/api/admin/categories", undefined, saved);
           setOk(true);
-          const [catsData, itemsData] = await Promise.all([
+          const [catsData, itemsData, woodData] = await Promise.all([
             authedJSON<Category[]>("/api/admin/categories", undefined, saved),
             authedJSON<Item[]>("/api/admin/items", undefined, saved),
+            authedJSON<WoodItem[]>("/api/admin/wood", undefined, saved),
           ]);
           setCats(Array.isArray(catsData) ? catsData : []);
           setItems(Array.isArray(itemsData) ? itemsData : []);
+          setWood(Array.isArray(woodData) ? [...woodData].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) : []);
           setMsg(null);
         } catch (e) {
-          // niepoprawne/nieaktualne hasło – wyczyść
           localStorage.removeItem("admin_pwd");
           setOk(false);
           setMsg(errToString(e));
@@ -582,16 +613,17 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      // test autoryzacji na podstawie wpisanego hasła
       await authedJSON("/api/admin/categories", undefined, password);
       localStorage.setItem("admin_pwd", password);
       setOk(true);
-      const [catsData, itemsData] = await Promise.all([
+      const [catsData, itemsData, woodData] = await Promise.all([
         authedJSON<Category[]>("/api/admin/categories"),
         authedJSON<Item[]>("/api/admin/items"),
+        authedJSON<WoodItem[]>("/api/admin/wood"),
       ]);
       setCats(Array.isArray(catsData) ? catsData : []);
       setItems(Array.isArray(itemsData) ? itemsData : []);
+      setWood(Array.isArray(woodData) ? [...woodData].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) : []);
     } catch (e) {
       setOk(false);
       setMsg(errToString(e));
@@ -609,6 +641,13 @@ export default function AdminPage() {
   const refreshCats = async () => {
     const data = (await authedJSON<Category[]>("/api/admin/categories")) ?? [];
     setCats(Array.isArray(data) ? data : []);
+  };
+
+  const refreshWood = async () => {
+    const data = (await authedJSON<WoodItem[]>("/api/admin/wood")) ?? [];
+    const arr = Array.isArray(data) ? data : [];
+    arr.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    setWood(arr);
   };
 
   /* ===== kategorie ===== */
@@ -900,7 +939,138 @@ export default function AdminPage() {
     }
   };
 
-  /* ===== dane do podglądu ===== */
+  /* ===== WOOD: create / edit / delete ===== */
+  const createWood = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMsg(null);
+    try {
+      if (!cFile) throw new Error("Dodaj zdjęcie");
+      const img = await uploadOne(cFile);
+      await authedJSON("/api/admin/wood", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          descriptionPl: cDescPl.trim(),
+          descriptionEn: cDescEn.trim() || undefined,
+          pricePLN: Number(cPrice),
+          image: img,
+          order: cOrder ? Number(cOrder) : undefined,
+        }),
+      });
+      if (cPreview) URL.revokeObjectURL(cPreview);
+      setCDescPl("");
+      setCDescEn("");
+      setCPrice("");
+      setCOrder("");
+      setCFile(null);
+      setCPreview(null);
+      await refreshWood();
+      setMsg("Dodano produkt WOOD");
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEditWood = (it: WoodItem) => {
+    setEditWood((s) => ({
+      ...s,
+      [it._id]: {
+        descriptionPl: it.descriptionPl || "",
+        descriptionEn: it.descriptionEn || "",
+        pricePLN: String(it.pricePLN ?? ""),
+        order: it.order != null ? String(it.order) : "",
+        newFile: null,
+        newPreview: null,
+      },
+    }));
+  };
+
+  const cancelEditWood = (id: string) => {
+    setEditWood((s) => {
+      const p = s[id]?.newPreview;
+      if (p) URL.revokeObjectURL(p);
+      const n = { ...s };
+      delete n[id];
+      return n;
+    });
+  };
+
+  const saveEditWood = async (id: string) => {
+    const data = editWood[id];
+    if (!data) return;
+    setLoading(true);
+    setMsg(null);
+    try {
+      let image: string | undefined;
+      if (data.newFile) image = await uploadOne(data.newFile);
+      await authedJSON(`/api/admin/wood/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          descriptionPl: data.descriptionPl.trim(),
+          descriptionEn: data.descriptionEn.trim() || undefined,
+          pricePLN: Number(data.pricePLN),
+          order: data.order ? Number(data.order) : null,
+          ...(image ? { image } : {}),
+        }),
+      });
+      cancelEditWood(id);
+      await refreshWood();
+      setMsg("Zapisano WOOD");
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteWood = async (id: string) => {
+    if (!confirm("Usunąć produkt WOOD?")) return;
+    setLoading(true);
+    setMsg(null);
+    try {
+      await authedJSON(`/api/admin/wood/${id}`, { method: "DELETE" });
+      await refreshWood();
+      setMsg("Usunięto WOOD");
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const moveWood = async (id: string, dir: -1 | 1) => {
+    const sorted = [...wood].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const idx = sorted.findIndex((i) => i._id === id);
+    const j = idx + dir;
+    if (idx < 0 || j < 0 || j >= sorted.length) return;
+    const a = sorted[idx], b = sorted[j];
+    const aOrder = a.order ?? idx, bOrder = b.order ?? j;
+    setLoading(true);
+    setMsg(null);
+    try {
+      await authedJSON(`/api/admin/wood/${a._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: bOrder }),
+      });
+      await authedJSON(`/api/admin/wood/${b._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: aOrder }),
+      });
+      await refreshWood();
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ===== dane do podglądu (BELTS) ===== */
   const groupedForPreview = useMemo(() => {
     const sortedCats = [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return sortedCats.map((c) => {
@@ -964,7 +1134,9 @@ export default function AdminPage() {
       <main className="min-h-screen bg-[#f5f5ef] text-neutral-900 flex items-center justify-center p-6">
         <div className="w-full max-w-sm rounded-2xl border border-neutral-300 bg-white p-6 shadow-sm">
           <h1 className="text-lg font-serif mb-2">Panel administracyjny</h1>
-          <p className="text-sm text-neutral-600 mb-4">Podaj hasło. Zostanie zapisane lokalnie, aby nie logować się za każdym razem.</p>
+          <p className="text-sm text-neutral-600 mb-4">
+            Podaj hasło. Zostanie zapisane lokalnie, aby nie logować się za każdym razem.
+          </p>
           <input
             type="password"
             value={password}
@@ -1009,8 +1181,8 @@ export default function AdminPage() {
       <div className="mx-auto max-w-7xl space-y-10">
         <header className="flex items-center justify-between">
           <h1 className="text-xl md:text-2xl font-serif">Panel administracyjny</h1>
-          <Link href="/admin/wood" className="rounded-lg bg-neutral-900 text-white px-6 py-3 text-lg" title="Zarządzaj WOOD">
-            Zarządzanie WOOD
+          <Link href="/" className="rounded-lg border px-4 py-2 hover:bg-neutral-50" title="Powrót na stronę">
+            ← Strona główna
           </Link>
         </header>
 
@@ -1103,7 +1275,7 @@ export default function AdminPage() {
           </ul>
         </section>
 
-        {/* PRZEDMIOTY */}
+        {/* PRZEDMIOTY (BELTS) */}
         <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm text-gray-800">
           <h2 className="font-medium mb-4">Dodaj pasek</h2>
 
@@ -1272,12 +1444,12 @@ export default function AdminPage() {
                               setForm((s) => {
                                 const files = [...s.files];
                                 const previews = [...s.previews];
-                                const meta = [...s.imagesMeta];
+                                const meta2 = [...s.imagesMeta];
                                 URL.revokeObjectURL(previews[i]);
                                 files.splice(i, 1);
                                 previews.splice(i, 1);
-                                meta.splice(i, 1);
-                                const withOrder = meta.map((m, idx) => ({ ...m, order: idx }));
+                                meta2.splice(i, 1);
+                                const withOrder = meta2.map((m, idx) => ({ ...m, order: idx }));
                                 if (!withOrder.some((m) => m.isPrimary) && withOrder[0]) withOrder[0].isPrimary = true;
                                 return { ...s, files, previews, imagesMeta: withOrder };
                               })
@@ -1666,7 +1838,231 @@ export default function AdminPage() {
           </div>
         </section>
 
-        {/* PODGLĄD */}
+        {/* WOOD */}
+        <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-medium">WOOD — produkty</h2>
+            {loading && <div className="text-sm text-neutral-500">Ładowanie…</div>}
+          </div>
+
+          {/* Create WOOD */}
+          <form onSubmit={createWood} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="space-y-3">
+              <label className="block text-sm text-neutral-600">Opis (PL)</label>
+              <textarea
+                value={cDescPl}
+                onChange={(e) => setCDescPl(e.target.value)}
+                className="w-full h-32 rounded-xl border px-3 py-2"
+                required
+              />
+              <label className="block text-sm text-neutral-600">Opis (EN)</label>
+              <textarea
+                value={cDescEn}
+                onChange={(e) => setCDescEn(e.target.value)}
+                className="w-full h-32 rounded-xl border px-3 py-2"
+              />
+            </div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-neutral-600">Cena (PLN)</label>
+                  <input
+                    type="number"
+                    value={cPrice}
+                    onChange={(e) => setCPrice(e.target.value)}
+                    className="w-full rounded-xl border px-3 py-2"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-neutral-600">Kolejność</label>
+                  <input
+                    type="number"
+                    value={cOrder}
+                    onChange={(e) => setCOrder(e.target.value)}
+                    className="w-full rounded-xl border px-3 py-2"
+                    placeholder="opcjonalnie"
+                  />
+                </div>
+              </div>
+
+              <label className="block text-sm text-neutral-600">Zdjęcie</label>
+              <label className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-neutral-300 px-4 py-6 cursor-pointer hover:bg-neutral-50">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = (e.target.files && e.target.files[0]) || null;
+                    if (!f) return;
+                    if (cPreview) URL.revokeObjectURL(cPreview);
+                    setCFile(f);
+                    setCPreview(URL.createObjectURL(f));
+                  }}
+                />
+                <ImageIcon className="h-5 w-5" />
+                <span>Wrzuć zdjęcie</span>
+              </label>
+
+              {cPreview && (
+                <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border">
+                  <Image src={cPreview} alt="preview" fill className="object-cover" />
+                  <button
+                    type="button"
+                    className="absolute top-2 right-2 px-2 py-1 text-xs rounded bg-white/85 border"
+                    onClick={() => {
+                      if (cPreview) URL.revokeObjectURL(cPreview);
+                      setCPreview(null);
+                      setCFile(null);
+                    }}
+                  >
+                    Anuluj
+                  </button>
+                </div>
+              )}
+
+              <button disabled={loading} className="w-full rounded-xl bg-neutral-900 text-white px-6 py-3 inline-flex items-center justify-center gap-2">
+                <Plus className="h-4 w-4" /> {loading ? "Zapisywanie…" : "Dodaj WOOD"}
+              </button>
+            </div>
+          </form>
+
+          {/* List WOOD */}
+          {wood.length === 0 ? (
+            <div className="text-sm text-neutral-500">Brak produktów WOOD</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {wood.map((it, idx) => {
+                const ed = editWood[it._id];
+                const canUp = idx > 0;
+                const canDown = idx < wood.length - 1;
+                return (
+                  <div key={it._id} className="rounded-2xl border p-3 bg-white">
+                    <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border">
+                      <Image src={ed?.newPreview || it.image} alt="wood" fill className="object-cover" />
+                    </div>
+
+                    {!ed ? (
+                      <>
+                        <div className="mt-3 text-sm text-neutral-700 line-clamp-3">{it.descriptionPl}</div>
+                        <div className="text-xs text-neutral-500">EN: {it.descriptionEn || "—"}</div>
+                        <div className="mt-2 text-sm">Cena: {it.pricePLN} PLN</div>
+                        <div className="text-xs text-neutral-500">Kolejność: {it.order ?? "—"}</div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            onClick={() => moveWood(it._id, -1)}
+                            disabled={!canUp}
+                            title="W górę"
+                            className={`px-3 py-1.5 rounded border ${canUp ? "hover:bg-neutral-50" : "opacity-40 cursor-not-allowed"}`}
+                          >
+                            <ArrowUpAZ className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => moveWood(it._id, 1)}
+                            disabled={!canDown}
+                            title="W dół"
+                            className={`px-3 py-1.5 rounded border ${canDown ? "hover:bg-neutral-50" : "opacity-40 cursor-not-allowed"}`}
+                          >
+                            <ArrowDownAZ className="h-4 w-4" />
+                          </button>
+
+                          <button
+                            onClick={() => startEditWood(it)}
+                            className="px-3 py-1.5 rounded border hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                          >
+                            <Pencil className="h-4 w-4" /> Edytuj
+                          </button>
+                          <button
+                            onClick={() => deleteWood(it._id)}
+                            className="px-3 py-1.5 rounded border hover:bg-red-50 text-red-600 inline-flex items-center gap-1.5"
+                          >
+                            <Trash2 className="h-4 w-4" /> Usuń
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="mt-3 grid grid-cols-1 gap-2 text-sm">
+                        <textarea
+                          value={ed.descriptionPl}
+                          onChange={(e) => setEditWood((s) => ({ ...s, [it._id]: { ...s[it._id], descriptionPl: e.target.value } }))}
+                          className="rounded border px-2 py-1.5"
+                          rows={3}
+                          placeholder="Opis PL"
+                        />
+                        <textarea
+                          value={ed.descriptionEn}
+                          onChange={(e) => setEditWood((s) => ({ ...s, [it._id]: { ...s[it._id], descriptionEn: e.target.value } }))}
+                          className="rounded border px-2 py-1.5"
+                          rows={3}
+                          placeholder="Opis EN"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            value={ed.pricePLN}
+                            onChange={(e) => setEditWood((s) => ({ ...s, [it._id]: { ...s[it._id], pricePLN: e.target.value } }))}
+                            className="rounded border px-2 py-1.5"
+                            placeholder="Cena PLN"
+                          />
+                          <input
+                            type="number"
+                            value={ed.order}
+                            onChange={(e) => setEditWood((s) => ({ ...s, [it._id]: { ...s[it._id], order: e.target.value } }))}
+                            className="rounded border px-2 py-1.5"
+                            placeholder="Kolejność"
+                          />
+                        </div>
+
+                        <label className="flex items-center justify-center gap-2 rounded border-2 border-dashed px-3 py-3 cursor-pointer hover:bg-neutral-50">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = (e.target.files && e.target.files[0]) || null;
+                              setEditWood((s) => {
+                                const cur = s[it._id];
+                                if (!cur) return s;
+                                if (cur.newPreview) URL.revokeObjectURL(cur.newPreview);
+                                return {
+                                  ...s,
+                                  [it._id]: {
+                                    ...cur,
+                                    newFile: f,
+                                    newPreview: f ? URL.createObjectURL(f) : null,
+                                  },
+                                };
+                              });
+                            }}
+                          />
+                          <ImageIcon className="h-4 w-4" /> Zmień zdjęcie
+                        </label>
+
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            onClick={() => saveEditWood(it._id)}
+                            className="px-3 py-1.5 rounded border hover:bg-green-50 text-green-700 inline-flex items-center gap-1.5"
+                          >
+                            <Save className="h-4 w-4" /> Zapisz
+                          </button>
+                          <button
+                            onClick={() => cancelEditWood(it._id)}
+                            className="px-3 py-1.5 rounded border hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                          >
+                            <X className="h-4 w-4" /> Anuluj
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* PODGLĄD pasków */}
         <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-medium">{UI_STRINGS[previewLang].preview}</h2>
