@@ -81,7 +81,7 @@ const json = async <T = unknown>(input: RequestInfo | URL, init?: RequestInit) =
 type Lang = "pl" | "en";
 type UploadResp = { path: string };
 function isUploadResp(x: unknown): x is UploadResp {
-  return !!x && typeof x === "object" && typeof (x as any).path === "string";
+  return typeof x === "object" && x !== null && "path" in x && typeof (x as { path: unknown }).path === "string";
 }
 
 type Category = { _id: string; name: string; slug: string; order?: number };
@@ -472,7 +472,8 @@ export default function AdminPage() {
     imagesMeta: [] as Omit<ItemImage, "url">[],
   });
 
-  const [autoTranslateEN, setAutoTranslateEN] = useState(false);
+  const [autoTranslateEN] = useState(false);
+
   const [enCache, setEnCache] = useState<Record<string, { titleEn: string; descriptionEn: string }>>({});
   const [editItem, setEditItem] = useState<
     Record<
@@ -937,13 +938,6 @@ export default function AdminPage() {
 
   /* ===== main admin UI ===== */
   const sortedCats = [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-  const setCreateImgMeta = (idx: number, patch: Partial<Omit<ItemImage, "url">>) =>
-    setForm((s) => {
-      const meta = [...s.imagesMeta];
-      meta[idx] = { ...meta[idx], ...patch };
-      return { ...s, imagesMeta: meta };
-    });
 
   const ensureOnePrimaryCreate = (setIndexPrimary: number) =>
     setForm((s) => {
