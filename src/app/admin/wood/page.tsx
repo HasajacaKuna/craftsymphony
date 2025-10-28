@@ -4,27 +4,27 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  Plus, Save, Trash2, Pencil, X, Image as ImageIcon,
-  ArrowUpAZ, ArrowDownAZ, Languages, ChevronLeft
+  Plus,
+  Save,
+  Trash2,
+  Pencil,
+  X,
+  Image as ImageIcon,
+  ArrowUpAZ,
+  ArrowDownAZ,
+  Languages,
+  ChevronLeft,
 } from "lucide-react";
 
 /* ========= helpers ========= */
-const API_HEADERS = (pwd: string) => ({ "x-admin-password": pwd });
-
 function errToString(e: unknown): string {
   if (e instanceof Error) return e.message;
-  try { return JSON.stringify(e); } catch { return String(e); }
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
 }
-
-type UploadResp = { path: string };
-
-function isUploadResp(x: unknown): x is UploadResp {
-  if (typeof x !== "object" || x === null) return false;
-  const obj = x as Record<string, unknown>;
-  return typeof obj.path === "string";
-}
-
-
 
 async function readJSON<T = unknown>(res: Response): Promise<T | null | { raw: string }> {
   const ctype = res.headers.get("content-type") || "";
@@ -44,9 +44,25 @@ async function readJSON<T = unknown>(res: Response): Promise<T | null | { raw: s
   }
   if (!text) return null;
   if (ctype.includes("application/json")) {
-    try { return JSON.parse(text) as T; } catch { return { raw: text }; }
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return { raw: text };
+    }
   }
-  try { return JSON.parse(text) as T; } catch { return { raw: text }; }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return { raw: text };
+  }
+}
+
+/* upload response type-guard */
+type UploadResp = { path: string };
+function isUploadResp(x: unknown): x is UploadResp {
+  if (typeof x !== "object" || x === null) return false;
+  const obj = x as Record<string, unknown>;
+  return typeof obj.path === "string";
 }
 
 /* ========= types ========= */
@@ -57,7 +73,7 @@ type WoodItem = {
   descriptionPl: string;
   descriptionEn?: string;
   pricePLN: number;
-  image: string;     // URL
+  image: string; // URL
   order?: number;
 };
 
@@ -111,15 +127,14 @@ const UI = {
 function formatPrice(lang: Lang, pln: number) {
   return lang === "pl"
     ? `${pln.toLocaleString("pl-PL", { maximumFractionDigits: 0 })} PLN`
-    : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(pln / 4);
+    : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(
+        pln / 4
+      );
 }
 
 /* ========= page ========= */
 export default function AdminWoodPage() {
-  // auth
-  const [password, setPassword] = useState("");
-  const [, setOk] = useState(false); // setter zostaje, zmienna niepotrzebna
-
+  // język UI
   const [uiLang, setUiLang] = useState<Lang>("pl");
   const t = UI[uiLang];
 
@@ -137,88 +152,95 @@ export default function AdminWoodPage() {
   const [cPreview, setCPreview] = useState<string | null>(null);
 
   // edit state
-  const [edit, setEdit] = useState<Record<string, {
-    descriptionPl: string; descriptionEn: string;
-    pricePLN: string; order: string;
-    newFile?: File | null; newPreview?: string | null;
-  }>>({});
+  const [edit, setEdit] = useState<
+    Record<
+      string,
+      {
+        descriptionPl: string;
+        descriptionEn: string;
+        pricePLN: string;
+        order: string;
+        newFile?: File | null;
+        newPreview?: string | null;
+      }
+    >
+  >({});
 
-  // lang persistence + admin password
+  // lang persistence (opcjonalnie)
   useEffect(() => {
     try {
       const saved = localStorage.getItem("cs_lang") as Lang | null;
       if (saved === "pl" || saved === "en") setUiLang(saved);
-      const pwd = localStorage.getItem("admin_pwd") || "";
-      setPassword(pwd);
       document.documentElement.lang = saved ?? "pl";
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }, []);
   useEffect(() => {
-    try { localStorage.setItem("cs_lang", uiLang); document.documentElement.lang = uiLang; } catch {}
+    try {
+      localStorage.setItem("cs_lang", uiLang);
+      document.documentElement.lang = uiLang;
+    } catch {
+      /* ignore */
+    }
   }, [uiLang]);
 
-  const authedFetch = useCallback(
-    async (input: string | URL, init?: RequestInit) => {
-      const res = await fetch(input, {
-        ...init,
-        headers: { ...(init?.headers || {}), ...API_HEADERS(password) },
-        cache: "no-store",
-      });
-      if (res.status === 401) throw new Error("Błędne hasło");
-      return res;
-    },
-    [password]
+  /* proste fetchery bez auth */
+  const plainFetch = useCallback(
+    async (input: string | URL, init?: RequestInit) => fetch(input, { ...init, cache: "no-store" }),
+    []
   );
-
-  const authedJSON = useCallback(
+  const json = useCallback(
     async <T = unknown>(input: string | URL, init?: RequestInit) => {
-      const res = await authedFetch(input, init);
+      const res = await plainFetch(input, init);
       return readJSON<T>(res);
     },
-    [authedFetch]
+    [plainFetch]
   );
 
   const refresh = useCallback(async () => {
-    setLoading(true); setMsg(null);
+    setLoading(true);
+    setMsg(null);
     try {
-      const data = (await authedJSON<WoodItem[]>("/api/admin/wood")) ?? [];
+      const data = (await json<WoodItem[]>("/api/admin/wood")) ?? [];
       const arr = Array.isArray(data) ? data : [];
-      arr.sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
+      arr.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       setItems(arr);
-      setOk(true);
     } catch (e) {
       setMsg(errToString(e));
-      setOk(false);
     } finally {
       setLoading(false);
     }
-  }, [authedJSON]);
+  }, [json]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
-const uploadOne = async (file: File) => {
-  const fd = new FormData();
-  fd.append("file", file);
+  const uploadOne = async (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
 
-  const data = await authedJSON<UploadResp>("/api/admin/upload", {
-    method: "POST",
-    body: fd,
-  });
+    const data = await json<UploadResp>("/api/admin/upload", {
+      method: "POST",
+      body: fd,
+    });
 
-  if (!isUploadResp(data)) {
-    throw new Error("Upload nie zwrócił poprawnej odpowiedzi (brak pola 'path').");
-  }
+    if (!isUploadResp(data)) {
+      throw new Error("Upload nie zwrócił poprawnej odpowiedzi (brak pola 'path').");
+    }
 
-  return data.path;
-};
+    return data.path;
+  };
 
   const createItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true); setMsg(null);
+    setLoading(true);
+    setMsg(null);
     try {
       if (!cFile) throw new Error("Dodaj zdjęcie");
       const img = await uploadOne(cFile);
-      await authedJSON("/api/admin/wood", {
+      await json("/api/admin/wood", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -231,7 +253,12 @@ const uploadOne = async (file: File) => {
       });
       // cleanup
       if (cPreview) URL.revokeObjectURL(cPreview);
-      setCDescPl(""); setCDescEn(""); setCPrice(""); setCOrder(""); setCFile(null); setCPreview(null);
+      setCDescPl("");
+      setCDescEn("");
+      setCPrice("");
+      setCOrder("");
+      setCFile(null);
+      setCPreview(null);
       await refresh();
       setMsg("Dodano produkt");
     } catch (e) {
@@ -242,7 +269,7 @@ const uploadOne = async (file: File) => {
   };
 
   const startEdit = (it: WoodItem) => {
-    setEdit(s => ({
+    setEdit((s) => ({
       ...s,
       [it._id]: {
         descriptionPl: it.descriptionPl || "",
@@ -251,22 +278,27 @@ const uploadOne = async (file: File) => {
         order: String(it.order ?? ""),
         newFile: null,
         newPreview: null,
-      }
+      },
     }));
   };
   const cancelEdit = (id: string) => {
-    setEdit(s => {
-      const p = s[id]?.newPreview; if (p) URL.revokeObjectURL(p);
-      const n = { ...s }; delete n[id]; return n;
+    setEdit((s) => {
+      const p = s[id]?.newPreview;
+      if (p) URL.revokeObjectURL(p);
+      const n = { ...s };
+      delete n[id];
+      return n;
     });
   };
   const saveEdit = async (id: string) => {
-    const data = edit[id]; if (!data) return;
-    setLoading(true); setMsg(null);
+    const data = edit[id];
+    if (!data) return;
+    setLoading(true);
+    setMsg(null);
     try {
       let image: string | undefined;
       if (data.newFile) image = await uploadOne(data.newFile);
-      await authedJSON(`/api/admin/wood/${id}`, {
+      await json(`/api/admin/wood/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -288,9 +320,10 @@ const uploadOne = async (file: File) => {
   };
   const deleteItem = async (id: string) => {
     if (!confirm("Usunąć produkt?")) return;
-    setLoading(true); setMsg(null);
+    setLoading(true);
+    setMsg(null);
     try {
-      await authedJSON(`/api/admin/wood/${id}`, { method: "DELETE" });
+      await json(`/api/admin/wood/${id}`, { method: "DELETE" });
       await refresh();
       setMsg("Usunięto");
     } catch (e) {
@@ -302,27 +335,41 @@ const uploadOne = async (file: File) => {
 
   // szybka zmiana kolejności (swap z sąsiadem)
   const move = async (id: string, dir: -1 | 1) => {
-    const sorted = [...items].sort((a,b)=> (a.order??0)-(b.order??0));
-    const idx = sorted.findIndex(i=>i._id===id);
+    const sorted = [...items].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const idx = sorted.findIndex((i) => i._id === id);
     const j = idx + dir;
-    if (idx<0 || j<0 || j>=sorted.length) return;
-    const a = sorted[idx], b = sorted[j];
-    const aOrder = a.order ?? idx, bOrder = b.order ?? j;
-    setLoading(true); setMsg(null);
+    if (idx < 0 || j < 0 || j >= sorted.length) return;
+    const a = sorted[idx],
+      b = sorted[j];
+    const aOrder = a.order ?? idx,
+      bOrder = b.order ?? j;
+    setLoading(true);
+    setMsg(null);
     try {
-      await authedJSON(`/api/admin/wood/${a._id}`, { method:"PATCH", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ order: bOrder }) });
-      await authedJSON(`/api/admin/wood/${b._id}`, { method:"PATCH", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ order: aOrder }) });
+      await json(`/api/admin/wood/${a._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: bOrder }),
+      });
+      await json(`/api/admin/wood/${b._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: aOrder }),
+      });
       await refresh();
-    } catch(e){ setMsg(errToString(e)); }
-    finally{ setLoading(false); }
+    } catch (e) {
+      setMsg(errToString(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const previewLang: Lang = uiLang;
   const previewCards = useMemo(() => {
-    const arr = [...items].sort((a,b)=>(a.order??0)-(b.order??0));
-    return arr.map(it => ({
+    const arr = [...items].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return arr.map((it) => ({
       image: it.image,
-      desc: previewLang==="pl" ? it.descriptionPl : (it.descriptionEn || it.descriptionPl),
+      desc: previewLang === "pl" ? it.descriptionPl : it.descriptionEn || it.descriptionPl,
       price: it.pricePLN,
     }));
   }, [items, previewLang]);
@@ -333,27 +380,24 @@ const uploadOne = async (file: File) => {
         {/* Header */}
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/admin" className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-neutral-50">
+            <Link
+              href="/admin"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-neutral-50"
+            >
               <ChevronLeft className="h-4 w-4" /> {t.back}
             </Link>
             <h1 className="text-xl md:text-2xl font-serif">{t.title}</h1>
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={()=> setUiLang(l=> l==="pl" ? "en":"pl")}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ${uiLang==="en" ? "bg-neutral-900 text-white border-neutral-900":"bg-white"}`}
+              onClick={() => setUiLang((l) => (l === "pl" ? "en" : "pl"))}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ${
+                uiLang === "en" ? "bg-neutral-900 text-white border-neutral-900" : "bg-white"
+              }`}
               title="Przełącz PL/EN UI"
             >
               <Languages className="h-4 w-4" /> {UI[uiLang].enAuto}
             </button>
-            <input
-              type="password"
-              value={password}
-              onChange={(e)=> setPassword(e.target.value)}
-              placeholder="hasło admina"
-              className="rounded-lg border border-neutral-300 px-3 py-1.5"
-              onBlur={()=> { try{ localStorage.setItem("admin_pwd", password); }catch{} }}
-            />
           </div>
         </header>
 
@@ -365,14 +409,14 @@ const uploadOne = async (file: File) => {
               <label className="block text-sm text-neutral-600">{t.fields.descPl}</label>
               <textarea
                 value={cDescPl}
-                onChange={e=> setCDescPl(e.target.value)}
+                onChange={(e) => setCDescPl(e.target.value)}
                 className="w-full h-32 rounded-xl border px-3 py-2"
                 required
               />
               <label className="block text-sm text-neutral-600">{t.fields.descEn}</label>
               <textarea
                 value={cDescEn}
-                onChange={e=> setCDescEn(e.target.value)}
+                onChange={(e) => setCDescEn(e.target.value)}
                 className="w-full h-32 rounded-xl border px-3 py-2"
               />
             </div>
@@ -383,7 +427,7 @@ const uploadOne = async (file: File) => {
                   <input
                     type="number"
                     value={cPrice}
-                    onChange={e=> setCPrice(e.target.value)}
+                    onChange={(e) => setCPrice(e.target.value)}
                     className="w-full rounded-xl border px-3 py-2"
                     required
                   />
@@ -393,7 +437,7 @@ const uploadOne = async (file: File) => {
                   <input
                     type="number"
                     value={cOrder}
-                    onChange={e=> setCOrder(e.target.value)}
+                    onChange={(e) => setCOrder(e.target.value)}
                     className="w-full rounded-xl border px-3 py-2"
                     placeholder="opcjonalnie"
                   />
@@ -406,7 +450,7 @@ const uploadOne = async (file: File) => {
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e)=> {
+                  onChange={(e) => {
                     const f = (e.target.files && e.target.files[0]) || null;
                     if (!f) return;
                     if (cPreview) URL.revokeObjectURL(cPreview);
@@ -420,18 +464,25 @@ const uploadOne = async (file: File) => {
 
               {cPreview && (
                 <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border">
-                  <Image src={cPreview as string} alt="preview" fill className="object-cover" />
+                  <Image src={cPreview} alt="preview" fill className="object-cover" />
                   <button
                     type="button"
                     className="absolute top-2 right-2 px-2 py-1 text-xs rounded bg-white/85 border"
-                    onClick={()=> { if (cPreview) URL.revokeObjectURL(cPreview); setCPreview(null); setCFile(null); }}
+                    onClick={() => {
+                      if (cPreview) URL.revokeObjectURL(cPreview);
+                      setCPreview(null);
+                      setCFile(null);
+                    }}
                   >
                     {t.cancel}
                   </button>
                 </div>
               )}
 
-              <button disabled={loading} className="w-full rounded-xl bg-neutral-900 text-white px-6 py-3 inline-flex items-center justify-center gap-2">
+              <button
+                disabled={loading}
+                className="w-full rounded-xl bg-neutral-900 text-white px-6 py-3 inline-flex items-center justify-center gap-2"
+              >
                 <Plus className="h-4 w-4" /> {loading ? "Zapisywanie…" : UI[uiLang].create}
               </button>
             </div>
@@ -456,7 +507,7 @@ const uploadOne = async (file: File) => {
                 return (
                   <div key={it._id} className="rounded-2xl border p-3 bg-white">
                     <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border">
-                      <Image src={ed?.newPreview ?? it.image} alt="wood" fill className="object-cover" />
+                      <Image src={ed?.newPreview || it.image} alt="wood" fill className="object-cover" />
                     </div>
 
                     {!ed ? (
@@ -467,28 +518,80 @@ const uploadOne = async (file: File) => {
                         <div className="text-xs text-neutral-500">Kolejność: {it.order ?? "—"}</div>
 
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <button onClick={()=> move(it._id, -1)} disabled={!canUp} title="W górę" className={`px-3 py-1.5 rounded border ${canUp ? "hover:bg-neutral-50":"opacity-40 cursor-not-allowed"}`}>
+                          <button
+                            onClick={() => move(it._id, -1)}
+                            disabled={!canUp}
+                            title="W górę"
+                            className={`px-3 py-1.5 rounded border ${
+                              canUp ? "hover:bg-neutral-50" : "opacity-40 cursor-not-allowed"
+                            }`}
+                          >
                             <ArrowUpAZ className="h-4 w-4" />
                           </button>
-                          <button onClick={()=> move(it._id, 1)} disabled={!canDown} title="W dół" className={`px-3 py-1.5 rounded border ${canDown ? "hover:bg-neutral-50":"opacity-40 cursor-not-allowed"}`}>
+                          <button
+                            onClick={() => move(it._id, 1)}
+                            disabled={!canDown}
+                            title="W dół"
+                            className={`px-3 py-1.5 rounded border ${
+                              canDown ? "hover:bg-neutral-50" : "opacity-40 cursor-not-allowed"
+                            }`}
+                          >
                             <ArrowDownAZ className="h-4 w-4" />
                           </button>
 
-                          <button onClick={()=> startEdit(it)} className="px-3 py-1.5 rounded border hover:bg-neutral-50 inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => startEdit(it)}
+                            className="px-3 py-1.5 rounded border hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                          >
                             <Pencil className="h-4 w-4" /> Edytuj
                           </button>
-                          <button onClick={()=> deleteItem(it._id)} className="px-3 py-1.5 rounded border hover:bg-red-50 text-red-600 inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => deleteItem(it._id)}
+                            className="px-3 py-1.5 rounded border hover:bg-red-50 text-red-600 inline-flex items-center gap-1.5"
+                          >
                             <Trash2 className="h-4 w-4" /> {t.delete}
                           </button>
                         </div>
                       </>
                     ) : (
                       <div className="mt-3 grid grid-cols-1 gap-2 text-sm">
-                        <textarea value={ed.descriptionPl} onChange={e=> setEdit(s=> ({ ...s, [it._id]: { ...s[it._id], descriptionPl: e.target.value } }))} className="rounded border px-2 py-1.5" rows={3} placeholder="Opis PL" />
-                        <textarea value={ed.descriptionEn} onChange={e=> setEdit(s=> ({ ...s, [it._id]: { ...s[it._id], descriptionEn: e.target.value } }))} className="rounded border px-2 py-1.5" rows={3} placeholder="Opis EN" />
+                        <textarea
+                          value={ed.descriptionPl}
+                          onChange={(e) =>
+                            setEdit((s) => ({ ...s, [it._id]: { ...s[it._id], descriptionPl: e.target.value } }))
+                          }
+                          className="rounded border px-2 py-1.5"
+                          rows={3}
+                          placeholder="Opis PL"
+                        />
+                        <textarea
+                          value={ed.descriptionEn}
+                          onChange={(e) =>
+                            setEdit((s) => ({ ...s, [it._id]: { ...s[it._id], descriptionEn: e.target.value } }))
+                          }
+                          className="rounded border px-2 py-1.5"
+                          rows={3}
+                          placeholder="Opis EN"
+                        />
                         <div className="grid grid-cols-2 gap-2">
-                          <input type="number" value={ed.pricePLN} onChange={e=> setEdit(s=> ({ ...s, [it._id]: { ...s[it._id], pricePLN: e.target.value } }))} className="rounded border px-2 py-1.5" placeholder="Cena PLN" />
-                          <input type="number" value={ed.order} onChange={e=> setEdit(s=> ({ ...s, [it._id]: { ...s[it._id], order: e.target.value } }))} className="rounded border px-2 py-1.5" placeholder="Kolejność" />
+                          <input
+                            type="number"
+                            value={ed.pricePLN}
+                            onChange={(e) =>
+                              setEdit((s) => ({ ...s, [it._id]: { ...s[it._id], pricePLN: e.target.value } }))
+                            }
+                            className="rounded border px-2 py-1.5"
+                            placeholder="Cena PLN"
+                          />
+                          <input
+                            type="number"
+                            value={ed.order}
+                            onChange={(e) =>
+                              setEdit((s) => ({ ...s, [it._id]: { ...s[it._id], order: e.target.value } }))
+                            }
+                            className="rounded border px-2 py-1.5"
+                            placeholder="Kolejność"
+                          />
                         </div>
 
                         <label className="flex items-center justify-center gap-2 rounded border-2 border-dashed px-3 py-3 cursor-pointer hover:bg-neutral-50">
@@ -496,13 +599,20 @@ const uploadOne = async (file: File) => {
                             type="file"
                             accept="image/*"
                             className="hidden"
-                            onChange={(e)=> {
+                            onChange={(e) => {
                               const f = (e.target.files && e.target.files[0]) || null;
-                              setEdit(s=> {
+                              setEdit((s) => {
                                 const cur = s[it._id];
                                 if (!cur) return s;
                                 if (cur.newPreview) URL.revokeObjectURL(cur.newPreview);
-                                return { ...s, [it._id]: { ...cur, newFile: f, newPreview: f ? URL.createObjectURL(f) : null } };
+                                return {
+                                  ...s,
+                                  [it._id]: {
+                                    ...cur,
+                                    newFile: f,
+                                    newPreview: f ? URL.createObjectURL(f) : null,
+                                  },
+                                };
                               });
                             }}
                           />
@@ -510,10 +620,16 @@ const uploadOne = async (file: File) => {
                         </label>
 
                         <div className="mt-2 flex flex-wrap gap-2">
-                          <button onClick={()=> saveEdit(it._id)} className="px-3 py-1.5 rounded border hover:bg-green-50 text-green-700 inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => saveEdit(it._id)}
+                            className="px-3 py-1.5 rounded border hover:bg-green-50 text-green-700 inline-flex items-center gap-1.5"
+                          >
                             <Save className="h-4 w-4" /> {t.save}
                           </button>
-                          <button onClick={()=> cancelEdit(it._id)} className="px-3 py-1.5 rounded border hover:bg-neutral-50 inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => cancelEdit(it._id)}
+                            className="px-3 py-1.5 rounded border hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                          >
                             <X className="h-4 w-4" /> {t.cancel}
                           </button>
                         </div>
@@ -533,10 +649,19 @@ const uploadOne = async (file: File) => {
             <div className="text-sm text-neutral-500">{UI[uiLang].empty}</div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {previewCards.map((p, i)=> (
-                <article key={i} className="rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm">
+              {previewCards.map((p, i) => (
+                <article
+                  key={i}
+                  className="rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm"
+                >
                   <div className="relative w-full aspect-square bg-neutral-100">
-                    <Image src={p.image} alt="wood" fill sizes="(max-width:640px) 100vw, (max-width:1024px) 50vw, 25vw" className="object-cover object-center" />
+                    <Image
+                      src={p.image}
+                      alt="wood"
+                      fill
+                      sizes="(max-width:640px) 100vw, (max-width:1024px) 50vw, 25vw"
+                      className="object-cover object-center"
+                    />
                   </div>
                   <div className="p-4">
                     <p className="text-sm text-neutral-600 line-clamp-3">{p.desc}</p>
