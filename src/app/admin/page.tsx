@@ -68,7 +68,10 @@ async function readJSON<T = unknown>(res: Response): Promise<T | null | { raw: s
   }
 }
 
-/** prosty fetch bez auth + helper do JSON */
+/** nagłówki do API admina */
+const API_HEADERS = (pwd: string) => ({ "x-admin-password": pwd });
+
+/** prosty fetch bez auth (do publicznych, tu prawie nieużywany) */
 const plainFetch = async (input: RequestInfo | URL, init?: RequestInit) =>
   fetch(input, { ...init, cache: "no-store" });
 
@@ -76,6 +79,30 @@ const json = async <T = unknown>(input: RequestInfo | URL, init?: RequestInit) =
   const res = await plainFetch(input, init);
   return readJSON<T>(res);
 };
+
+/** fetch z auth – korzysta z hasła ze stanu, opcjonalnie można podać overridePwd */
+function makeAuthed(passwordRef: () => string) {
+  const authedFetch = async (input: RequestInfo | URL, init?: RequestInit, overridePwd?: string) => {
+    const pwd = overridePwd ?? passwordRef();
+    if (!pwd) throw new Error("Brak hasła administracyjnego.");
+    const res = await fetch(input, {
+      ...init,
+      headers: { ...(init?.headers || {}), ...API_HEADERS(pwd) },
+      cache: "no-store",
+    });
+    if (res.status === 401) throw new Error("Błędne hasło (401 Unauthorized).");
+    return res;
+  };
+  const authedJSON = async <T = unknown>(
+    input: RequestInfo | URL,
+    init?: RequestInit,
+    overridePwd?: string
+  ): Promise<T | null | { raw: string }> => {
+    const res = await authedFetch(input, init, overridePwd);
+    return readJSON<T>(res);
+  };
+  return { authedFetch, authedJSON };
+}
 
 /* ========= types ========= */
 type Lang = "pl" | "en";
@@ -242,7 +269,7 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
                   {gallery[heroIdx] ? (
                     <>
                       <Image
-                        src={gallery[heroIdx]}
+                        src={gallery[heroIdx] as string}
                         alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`}
                         fill
                         sizes="(max-width:1280px) 70vw, 800px"
@@ -342,7 +369,7 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
               >
                 {gallery[heroIdx] ? (
                   <>
-                    <Image src={gallery[heroIdx]} alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`} fill sizes="100vw" className="object-contain" />
+                    <Image src={gallery[heroIdx] as string} alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`} fill sizes="100vw" className="object-contain" />
                     <div className="absolute left-2 bottom-2 opacity-80">
                       <div className="relative h-7 w-7">
                         <Image src="/images/znakwodny.png" alt="watermark" fill sizes="28px" className="object-contain pointer-events-none select-none" />
@@ -440,9 +467,11 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
 
 /* ========= główna strona panelu ========= */
 export default function AdminPage() {
-  // stan logowania (lokalny – tylko w przeglądarce)
+  // stan logowania
   const [password, setPassword] = useState("");
   const [ok, setOk] = useState(false);
+
+  const { authedFetch, authedJSON } = makeAuthed(() => password);
 
   const [cats, setCats] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -500,34 +529,42 @@ export default function AdminPage() {
 
   const [previewLang, setPreviewLang] = useState<Lang>("pl");
 
-  /* ===== AUTO-LOGIN: jeśli jest admin_pwd w localStorage, automatycznie „zaloguj” i wczytaj dane ===== */
+  /* ===== AUTO-LOGIN ===== */
   useEffect(() => {
     try {
       const saved = localStorage.getItem("admin_pwd");
-      if (saved !== null) {
-        setPassword(saved);
-        setOk(true);
-        // preload danych
-        (async () => {
-          try {
-            const catsData = (await json<Category[]>("/api/admin/categories")) ?? [];
-            setCats(Array.isArray(catsData) ? catsData : []);
-            const itemsData = (await json<Item[]>("/api/admin/items")) ?? [];
-            setItems(Array.isArray(itemsData) ? itemsData : []);
-          } catch (e) {
-            setMsg(errToString(e));
-          }
-        })();
-      }
+      if (!saved) return;
+      // ustaw wewnętrzne hasło, żeby dalsze wywołania miały nagłówek
+      setPassword(saved);
+      (async () => {
+        try {
+          // test autoryzacji z zapisanym hasłem (overridePwd)
+          await authedJSON("/api/admin/categories", undefined, saved);
+          setOk(true);
+          const [catsData, itemsData] = await Promise.all([
+            authedJSON<Category[]>("/api/admin/categories", undefined, saved),
+            authedJSON<Item[]>("/api/admin/items", undefined, saved),
+          ]);
+          setCats(Array.isArray(catsData) ? catsData : []);
+          setItems(Array.isArray(itemsData) ? itemsData : []);
+          setMsg(null);
+        } catch (e) {
+          // niepoprawne/nieaktualne hasło – wyczyść
+          localStorage.removeItem("admin_pwd");
+          setOk(false);
+          setMsg(errToString(e));
+        }
+      })();
     } catch {
       /* ignore */
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ===== translator helper (opcjonalny) – bez auth ===== */
+  /* ===== translator helper (opcjonalny) – Z AUTH bo to /api/admin/translate ===== */
   async function translatePLtoEN(text: string): Promise<string> {
     try {
-      const data = await json<{ text: string }>("/api/admin/translate", {
+      const data = await authedJSON<{ text: string }>("/api/admin/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, source: "pl", target: "en" }),
@@ -540,29 +577,37 @@ export default function AdminPage() {
     }
   }
 
-  /* ===== login: tylko zapis do localStorage i pobranie danych ===== */
+  /* ===== manualne logowanie ===== */
   const tryAuth = async () => {
+    setLoading(true);
+    setMsg(null);
     try {
-      localStorage.setItem("admin_pwd", password); // zapamiętaj (lokalnie)
-      const catsData = (await json<Category[]>("/api/admin/categories")) ?? [];
-      setCats(Array.isArray(catsData) ? catsData : []);
-      await refreshItems();
+      // test autoryzacji na podstawie wpisanego hasła
+      await authedJSON("/api/admin/categories", undefined, password);
+      localStorage.setItem("admin_pwd", password);
       setOk(true);
-      setMsg(null);
+      const [catsData, itemsData] = await Promise.all([
+        authedJSON<Category[]>("/api/admin/categories"),
+        authedJSON<Item[]>("/api/admin/items"),
+      ]);
+      setCats(Array.isArray(catsData) ? catsData : []);
+      setItems(Array.isArray(itemsData) ? itemsData : []);
     } catch (e) {
       setOk(false);
       setMsg(errToString(e));
+    } finally {
+      setLoading(false);
     }
   };
 
   const refreshItems = async () => {
-    const data = (await json<Item[]>("/api/admin/items")) ?? [];
+    const data = (await authedJSON<Item[]>("/api/admin/items")) ?? [];
     const arr = Array.isArray(data) ? data : [];
     setItems(arr);
   };
 
   const refreshCats = async () => {
-    const data = (await json<Category[]>("/api/admin/categories")) ?? [];
+    const data = (await authedJSON<Category[]>("/api/admin/categories")) ?? [];
     setCats(Array.isArray(data) ? data : []);
   };
 
@@ -572,7 +617,7 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      await json("/api/admin/categories", {
+      await authedJSON("/api/admin/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newCatName }),
@@ -601,7 +646,7 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      await json(`/api/admin/categories/${id}`, {
+      await authedJSON(`/api/admin/categories/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: data.name, slug: data.slug }),
@@ -621,7 +666,7 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      await json(`/api/admin/categories/${id}`, { method: "DELETE" });
+      await authedJSON(`/api/admin/categories/${id}`, { method: "DELETE" });
       await Promise.all([refreshCats(), refreshItems()]);
       setMsg("Usunięto kategorię");
     } catch (e) {
@@ -645,12 +690,12 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      await json(`/api/admin/categories/${a._id}`, {
+      await authedJSON(`/api/admin/categories/${a._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order: bOrder }),
       });
-      await json(`/api/admin/categories/${b._id}`, {
+      await authedJSON(`/api/admin/categories/${b._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order: aOrder }),
@@ -668,7 +713,7 @@ export default function AdminPage() {
     const fd = new FormData();
     fd.append("file", file);
 
-    const data = await json<UploadResp>("/api/admin/upload", { method: "POST", body: fd });
+    const data = await authedJSON<UploadResp>("/api/admin/upload", { method: "POST", body: fd });
     if (!isUploadResp(data)) throw new Error("Upload nie zwrócił poprawnej odpowiedzi (brak pola 'path').");
     return data.path;
   };
@@ -698,7 +743,7 @@ export default function AdminPage() {
         isPrimary: form.imagesMeta[i]?.isPrimary ?? i === 0,
       }));
 
-      await json("/api/admin/items", {
+      await authedJSON("/api/admin/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -811,7 +856,7 @@ export default function AdminPage() {
         });
       }
 
-      await json(`/api/admin/items/${id}`, {
+      await authedJSON(`/api/admin/items/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -845,7 +890,7 @@ export default function AdminPage() {
     setLoading(true);
     setMsg(null);
     try {
-      await json(`/api/admin/items/${id}`, { method: "DELETE" });
+      await authedJSON(`/api/admin/items/${id}`, { method: "DELETE" });
       await refreshItems();
       setMsg("Usunięto przedmiot");
     } catch (e) {
@@ -919,7 +964,7 @@ export default function AdminPage() {
       <main className="min-h-screen bg-[#f5f5ef] text-neutral-900 flex items-center justify-center p-6">
         <div className="w-full max-w-sm rounded-2xl border border-neutral-300 bg-white p-6 shadow-sm">
           <h1 className="text-lg font-serif mb-2">Panel administracyjny</h1>
-          <p className="text-sm text-neutral-600 mb-4">Podaj hasło (tylko do zapamiętania lokalnie).</p>
+          <p className="text-sm text-neutral-600 mb-4">Podaj hasło. Zostanie zapisane lokalnie, aby nie logować się za każdym razem.</p>
           <input
             type="password"
             value={password}
@@ -928,7 +973,7 @@ export default function AdminPage() {
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 mb-3 outline-none focus:ring-2 focus:ring-neutral-900/10"
           />
           <button onClick={tryAuth} className="w-full px-4 py-2 rounded-lg bg-neutral-900 text-white">
-            Zaloguj
+            {loading ? "Logowanie…" : "Zaloguj"}
           </button>
           {msg && <p className="mt-3 text-sm text-red-600">{msg}</p>}
         </div>
