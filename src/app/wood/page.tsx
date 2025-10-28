@@ -611,7 +611,7 @@ function CategorySection({
   );
 }
 
-/* ===== Główny komponent – TYLKO dane z bazy ===== */
+/* ===== Główny komponent – TYLKO dane z bazy (TYLKO kategoria "wood") ===== */
 export default function LuxuryLanding({
   logo = "/images/logo3.png",
   aboutImage = "/images/3.png",
@@ -645,7 +645,7 @@ export default function LuxuryLanding({
     }
   }, [lang]);
 
-  // Fetch + normalizacja
+  // Fetch + normalizacja (tylko kategoria "wood")
   useEffect(() => {
     let abort = false;
     (async () => {
@@ -654,57 +654,61 @@ export default function LuxuryLanding({
         const res = await fetch("/api/catalog", { cache: "no-store" });
         const json: CatalogResponse = await res.json();
 
-        const normalized: CategoryData[] = (json?.categories ?? []).map(
-          (cat) => {
-            const catImages = toImageObjects(
-              cat.images as (string | BeltImage)[]
-            );
+        // ⬇️ BIERZEMY TYLKO KATEGORIĘ "wood" (po slug i awaryjnie po title)
+        const onlyWoodCategories = (json?.categories ?? []).filter((cat) => {
+          const slug = (cat.slug ?? "").toLowerCase().trim();
+          const title = (cat.title ?? "").toLowerCase().trim();
+          return slug === "wood" || title === "wood";
+        });
 
-            const items: BeltItem[] = (cat.items ?? []).map((it) => {
-              const min = Number(it.rozmiarMin);
-              const max = Number(it.rozmiarMax);
-              const upper = isFinite(Math.max(min, max))
-                ? `${Math.max(min, max)} cm`
-                : "—";
-              const lower = isFinite(Math.min(min, max))
-                ? `${Math.min(min, max)} cm`
-                : "—";
-              const main =
-                it.rozmiarGlowny != null && it.rozmiarGlowny !== ""
-                  ? `${it.rozmiarGlowny} cm`
-                  : undefined;
-              const buckle =
-                it.rozSprz != null && it.rozSprz !== ""
-                  ? `${Number(it.rozSprz)} cm`
-                  : undefined;
+        // ⬇️ Normalizacja identyczna jak wcześniej – ale tylko dla "wood"
+        const normalized: CategoryData[] = onlyWoodCategories.map((cat) => {
+          const catImages = toImageObjects(cat.images as (string | BeltImage)[]);
 
-              const imgs = sortImages(it.images || []);
-              if (imgs.length && !imgs.some((x) => x.isPrimary)) {
-                imgs[0].isPrimary = true;
-              }
+          const items: BeltItem[] = (cat.items ?? []).map((it) => {
+            const min = Number(it.rozmiarMin);
+            const max = Number(it.rozmiarMax);
+            const upper = isFinite(Math.max(min, max))
+              ? `${Math.max(min, max)} cm`
+              : "—";
+            const lower = isFinite(Math.min(min, max))
+              ? `${Math.min(min, max)} cm`
+              : "—";
+            const main =
+              it.rozmiarGlowny != null && it.rozmiarGlowny !== ""
+                ? `${it.rozmiarGlowny} cm`
+                : undefined;
+            const buckle =
+              it.rozSprz != null && it.rozSprz !== ""
+                ? `${Number(it.rozSprz)} cm`
+                : undefined;
 
-              return {
-                name: it.title,
-                nameEn: it.titleEn,
-                description: it.description,
-                descriptionEn: it.descriptionEn,
-                price: it.cenaPLN,
-                upperSize: upper,
-                lowerSize: lower,
-                mainSize: main,
-                buckleSize: buckle,
-                images: imgs,
-                beltNo: it.numerPaska,
-              };
-            });
+            const imgs = sortImages(it.images || []);
+            if (imgs.length && !imgs.some((x) => x.isPrimary)) {
+              imgs[0].isPrimary = true;
+            }
 
             return {
-              title: cat.title,
-              images: catImages,
-              items,
+              name: it.title,
+              nameEn: it.titleEn,
+              description: it.description,
+              descriptionEn: it.descriptionEn,
+              price: it.cenaPLN,
+              upperSize: upper,
+              lowerSize: lower,
+              mainSize: main,
+              buckleSize: buckle,
+              images: imgs,
+              beltNo: it.numerPaska,
             };
-          }
-        );
+          });
+
+          return {
+            title: cat.title, // np. "Wood"
+            images: catImages,
+            items,
+          };
+        });
 
         if (!abort) setData(normalized);
       } catch {
@@ -750,7 +754,7 @@ export default function LuxuryLanding({
             </div>
           )}
 
-          {/* CATEGORIES FROM DB */}
+          {/* TYLKO kategorie wood z bazy */}
           {!loading &&
             data &&
             data.filter(hasRenderable).map((cat, idx) => (
