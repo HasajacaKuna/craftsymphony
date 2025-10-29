@@ -38,10 +38,23 @@ type ApiCategory = {
   items: ApiItem[];
 };
 
+type UIStrings = {
+  navLeather: string;
+  navWood: string;
+  price: string;
+  interestedHeading: string;
+  interestedText: string;
+  emailPh: string;
+  productNoPh: string;
+  send: string;
+  about: string;
+};
+
+
 type CatalogResponse = { categories: ApiCategory[] };
 
 /* ===== UI (PL/EN) ===== */
-const UI: Record<Lang, any> = {
+const UI: Record<Lang, UIStrings> = {
   pl: {
     navLeather: "Skóra",
     navWood: "Drewno",
@@ -140,7 +153,7 @@ export default function WoodPage() {
     } catch {}
   }, [lang]);
 
-  const t = UI[lang] ?? {};
+  const t = UI[lang];
 
   // fetch z /api/catalog -> tylko kategoria wood -> spłaszczenie itemów do grida
   useEffect(() => {
@@ -253,7 +266,7 @@ const flat: WoodCard[] = woodCats.flatMap((cat, catIdx) => {
         ))}
       </div>
     );
-  }, [items, loading, lang, t?.price]);
+  }, [items, loading, lang]);
 
   return (
     <div className="min-h-screen bg-[#f5f5ef] text-neutral-900 selection:bg-neutral-900 selection:text-white">
