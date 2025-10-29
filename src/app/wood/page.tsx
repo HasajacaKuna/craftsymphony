@@ -59,7 +59,7 @@ const UI: Record<Lang, UIStrings> = {
     navLeather: "Skóra",
     navWood: "Drewno",
     price: "Cena:",
-    interestedHeading: "Jestem zainteresowany/a?",
+    interestedHeading: "Jestem zainteresowany?",
     interestedText:
       "Podaj e-mail oraz numer produktu — odezwiemy się z potwierdzeniem.",
     emailPh: "Twój e-mail",
