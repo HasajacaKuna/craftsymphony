@@ -59,6 +59,12 @@ export type BeltItem = {
   mainSize?: string | number;
   buckleSize?: string | number; // sprzączka
   beltNo?: number;
+  upperSizeNum?: number | null;
+lowerSizeNum?: number | null;
+mainSizeNum?: number | null;
+buckleSizeNum?: number | null;
+priceNum?: number | null;
+
 };
 
 export type CategoryData = {
@@ -89,6 +95,19 @@ const UI_STRINGS: Record<
     about: string;
     loading: string;
     empty: string;
+    filters: string;
+    openFilters: string;
+    close: string;
+    apply: string;
+    clearAll:string;
+    search:string;
+    priceRange: string;
+    lengthRange:string;
+    buckleRange:string;
+    beltNo:string;
+    matching:string;
+    any: string;
+
   }
 > = {
   pl: {
@@ -112,6 +131,20 @@ const UI_STRINGS: Record<
       "Każdy pasek powstaje w całości ręcznie – od doboru skóry, przez cięcie i barwienie, po wykończenie krawędzi. Wierzymy w rzemiosło, które ma duszę: staranność detalu i ponadczasowy charakter. Nasze paski łączą tradycję z nowoczesną precyzją — projektowane z myślą o trwałości i pięknie, które dojrzewa z czasem.",
     loading: "Ładowanie katalogu…",
     empty: "Brak produktów do wyświetlenia.",
+    // W KAŻDYM języku (pl/en) dodaj:
+filters: "Filtry",
+openFilters: "Pokaż filtry",
+close: "Zamknij",
+apply: "Zastosuj",
+clearAll: "Wyczyść",
+search: "Szukaj",
+priceRange: "Cena (PLN)",
+lengthRange: "Długość paska (cm)",
+buckleRange: "Szerokość klamry (cm)",
+beltNo: "Numer paska",
+matching: "pasuje",
+any: "Dowolny"
+
   },
   en: {
     navLeather: "Leather",
@@ -134,6 +167,19 @@ const UI_STRINGS: Record<
       "Each belt is crafted entirely by hand — from leather selection and cutting to dyeing and edge finishing. We believe in soul-filled craftsmanship: meticulous detail and timeless character. Our belts blend tradition with modern precision, designed for durability and beauty that matures over time.",
     loading: "Loading catalog…",
     empty: "No products to display.",
+    filters: "Filters",
+openFilters: "Show filters",
+close: "Close",
+apply: "Apply",
+clearAll: "Clear",
+search: "Search",
+priceRange: "Price (PLN)",
+lengthRange: "Belt length (cm)",
+buckleRange: "Buckle width (cm)",
+beltNo: "Belt number",
+matching: "match",
+any: "Any"
+
   },
 };
 
@@ -146,6 +192,24 @@ export type LuxuryLandingProps = {
 export type Labels = (typeof UI_STRINGS)["pl"];
 
 /* ===== utils ===== */
+
+function num(v: unknown): number | null {
+  if (v == null) return null;
+  if (typeof v === "number" && isFinite(v)) return v;
+  const m = String(v).match(/[\d,.]+/g)?.join("") ?? "";
+  const n = Number(m.replace(",", "."));
+  return isFinite(n) ? n : null;
+}
+
+function clampRange([min, max]: [number, number]): [number, number] {
+  return [Math.min(min, max), Math.max(min, max)];
+}
+
+function inNumRange(x: number | null, r?: [number, number] | null) {
+  if (x == null || !r) return true;
+  return x >= r[0] && x <= r[1];
+}
+
 function formatPriceForLang(price: string | number | undefined, lang: Lang) {
   if (price == null) return "—";
 
@@ -153,12 +217,12 @@ function formatPriceForLang(price: string | number | undefined, lang: Lang) {
     if (lang === "pl") {
       return `${price.toLocaleString("pl-PL")} PLN`;
     }
-    const usd = price / 4;
+    const eur = price / 4;
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: "EUR",
       maximumFractionDigits: 2,
-    }).format(usd);
+    }).format(eur);
   }
 
   if (lang === "pl") return price;
@@ -200,6 +264,7 @@ function CategorySection({
   lang,
 }: CategoryData & { labels: Labels; lang: Lang }) {
   // HOOKI
+const [processedSrc, setProcessedSrc] = useState<Record<string, string>>({});
 
   
   const [active, setActive] = useState(0);
@@ -262,6 +327,8 @@ function CategorySection({
     setTouchStartX(null);
   };
 
+  
+
   // miniatury: primary (albo fallback) każdego paska
   const beltThumbs = items
     .map((it, i) => {
@@ -306,6 +373,36 @@ function CategorySection({
     setNextLoaded(false);
     setActive(i);
   };
+
+  // Obrót poziomych obrazów o 90° (-> pion) i zwrot dataURL; bezpieczny (CORS -> fallback)
+async function rotateIfLandscape(imgEl: HTMLImageElement, src: string) {
+  try {
+    const nw = imgEl.naturalWidth;
+    const nh = imgEl.naturalHeight;
+    if (!nw || !nh) return null;
+    if (nw <= nh) return null; // już pion — nic nie rób
+
+    // Canvas: po obrocie szerokość = nh, wysokość = nw
+    const canvas = document.createElement("canvas");
+    canvas.width = nh;
+    canvas.height = nw;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    // środek -> obrót 90° -> rysunek
+    ctx.translate(nh / 2, nw / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(imgEl, -nw / 2, -nh / 2, nw, nh);
+
+    // Jakość 0.9; można zmienić na "image/png" jeśli wolisz bezstratnie
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    return dataUrl;
+  } catch {
+    // np. CORS „tainted canvas” — trudno, zostaw oryginał
+    return null;
+  }
+}
+
 
   return (
     <div>
@@ -629,6 +726,33 @@ export default function LuxuryLanding({
   const [data, setData] = useState<CategoryData[] | null>(null);
   const [loading, setLoading] = useState(true);
 
+const [isFiltersOpen, setFiltersOpen] = useState(false);
+
+useEffect(() => {
+  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setFiltersOpen(false); };
+  document.addEventListener("keydown", onKey);
+  document.body.style.overflow = isFiltersOpen ? "hidden" : "";
+  return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+}, [isFiltersOpen]);
+
+
+type Filters = {
+  q: string;
+  price?: [number, number] | null;
+  length?: [number, number] | null; // po mainSizeNum
+  buckle?: [number, number] | null;
+  beltNo?: number | null;
+};
+
+const [filters, setFilters] = useState<Filters>({
+  q: "",
+  price: null,
+  length: null,
+  buckle: null,
+  beltNo: null,
+});
+
+
   // persist + lang attr
   useEffect(() => {
     const saved =
@@ -656,13 +780,23 @@ export default function LuxuryLanding({
         const res = await fetch("/api/catalog", { cache: "no-store" });
         const json: CatalogResponse = await res.json();
 
-        const normalized: CategoryData[] = (json?.categories ?? []).map(
-          (cat) => {
+// 1) Odfiltrowanie kategorii "wood" (na wszelki wypadek po slug i po tytule w PL/EN)
+const srcCats = (json?.categories ?? []).filter(cat => {
+  const slug = cat.slug?.toLowerCase?.() ?? "";
+  const title = cat.title?.toLowerCase?.() ?? "";
+  return slug !== "wood" && title !== "wood" && title !== "drewno";
+});
+
+// 2) Dopiero teraz mapujemy do naszego kształtu
+const normalized: CategoryData[] = srcCats.map((cat) => {
+
             const catImages = toImageObjects(
               cat.images as (string | BeltImage)[]
             );
 
             const items: BeltItem[] = (cat.items ?? []).map((it) => {
+
+              
               const min = Number(it.rozmiarMin);
               const max = Number(it.rozmiarMax);
               const upper = isFinite(Math.max(min, max))
@@ -697,6 +831,13 @@ export default function LuxuryLanding({
                 buckleSize: buckle,
                 images: imgs,
                 beltNo: it.numerPaska,
+                // DODAJ do zwracanego obiektu BeltItem:
+upperSizeNum: isFinite(Math.max(min, max)) ? Math.max(min, max) : null,
+lowerSizeNum: isFinite(Math.min(min, max)) ? Math.min(min, max) : null,
+mainSizeNum: num(it.rozmiarGlowny),
+buckleSizeNum: num(it.rozSprz),
+priceNum: typeof it.cenaPLN === "number" ? it.cenaPLN : num(it.cenaPLN),
+
               };
             });
 
@@ -728,6 +869,60 @@ export default function LuxuryLanding({
     return (c.items?.length || 0) > 0 && (anyWithImages || categoryImages);
   };
 
+    // === FILTROWANIE (globalnie, przed renderem) ===
+  const predicate = (it: BeltItem) => {
+    const txt =
+      (it.name ?? "") +
+      " " +
+      (it.nameEn ?? "") +
+      " " +
+      (it.description ?? "") +
+      " " +
+      (it.descriptionEn ?? "");
+
+    const qOk =
+      !filters.q ||
+      txt.toLowerCase().includes(filters.q.toLowerCase());
+
+    const priceOk = inNumRange(it.priceNum ?? null, filters.price ?? undefined);
+    const lengthOk = inNumRange(it.mainSizeNum ?? null, filters.length ?? undefined);
+    const buckleOk = inNumRange(it.buckleSizeNum ?? null, filters.buckle ?? undefined);
+    const beltNoOk =
+      filters.beltNo == null ? true : it.beltNo === filters.beltNo;
+
+    return qOk && priceOk && lengthOk && buckleOk && beltNoOk;
+  };
+
+  const filteredData: CategoryData[] | null = !data
+    ? null
+    : data.map((cat) => ({
+        ...cat,
+        items: (cat.items ?? []).filter(predicate),
+      }));
+
+        const totalMatches =
+    filteredData?.reduce((s, c) => s + (c.items?.length ?? 0), 0) ?? 0;
+
+
+
+  const allItems = (data ?? []).flatMap(c => c.items ?? []);
+
+const bounds = {
+  price: clampRange([
+    Math.min(...allItems.map(i => i.priceNum ?? Infinity)),
+    Math.max(...allItems.map(i => i.priceNum ?? -Infinity)),
+  ] as [number, number]),
+  length: clampRange([
+    Math.min(...allItems.map(i => i.mainSizeNum ?? Infinity)),
+    Math.max(...allItems.map(i => i.mainSizeNum ?? -Infinity)),
+  ] as [number, number]),
+  buckle: clampRange([
+    Math.min(...allItems.map(i => i.buckleSizeNum ?? Infinity)),
+    Math.max(...allItems.map(i => i.buckleSizeNum ?? -Infinity)),
+  ] as [number, number]),
+};
+
+
   const navLink =
     "relative text-[12px] md:text-[13px] uppercase font-serif text-neutral-800 hover:text-neutral-950 transition " +
     "after:absolute after:-bottom-1 after:h-[1px] after:w-0 after:bg-neutral-900 after:transition-all after:duration-300 hover:after:w-full " +
@@ -752,10 +947,34 @@ export default function LuxuryLanding({
             </div>
           )}
 
+{/* GLOBALNY PRZYCISK FILTRÓW — FIXED, WYRÓWNANY DO LEWEJ SEKCJI */}
+<div
+  className="
+    fixed left-0 right-0 z-40
+    top-[5.75rem] md:top-24
+    pointer-events-none
+  "
+>
+  <div className="mx-auto max-w-6xl px-4">
+    <div className="flex justify-start">
+      <button
+        type="button"
+        onClick={() => setFiltersOpen(true)}
+        className="pointer-events-auto inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/80 backdrop-blur px-4 py-2 text-sm hover:bg-white shadow-sm"
+      >
+        {t.openFilters}
+      </button>
+    </div>
+  </div>
+</div>
+
+
+
+
           {/* CATEGORIES FROM DB */}
-          {!loading &&
-            data &&
-            data.filter(hasRenderable).map((cat, idx) => (
+{!loading &&
+  filteredData &&
+  filteredData.filter(hasRenderable).map((cat, idx) => (
               <div key={`${cat.title}-${idx}`}>
                 <CategorySection
                   title={cat.title}
@@ -769,11 +988,11 @@ export default function LuxuryLanding({
             ))}
 
           {/* EMPTY STATE */}
-          {!loading && (data?.filter(hasRenderable).length ?? 0) === 0 && (
-            <div className="text-center text-sm text-neutral-600">
-              {t.empty}
-            </div>
-          )}
+{!loading && (filteredData?.filter(hasRenderable).length ?? 0) === 0 && (
+  <div className="text-center text-sm text-neutral-600">
+    {t.empty}
+  </div>
+)}
 
           {/* O rzemiośle + formularz */}
           <div className="mt-4 md:mt-6 text-center">
@@ -860,6 +1079,182 @@ export default function LuxuryLanding({
           </div>
         </section>
       </main>
+
+      {/* OVERLAY */}
+{isFiltersOpen && (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    onClick={() => setFiltersOpen(false)}
+    className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px]"
+    aria-hidden
+  />
+)}
+
+{/* SZUFLADA LEWA */}
+<motion.aside
+  initial={{ x: "-100%" }}
+  animate={{ x: isFiltersOpen ? 0 : "-100%" }}
+  transition={{ type: "spring", stiffness: 320, damping: 32 }}
+  className="fixed left-0 top-0 z-50 h-dvh w-[90vw] max-w-md bg-[#f7f7f2] shadow-2xl border-r border-neutral-200"
+  role="dialog"
+  aria-modal="true"
+  drag="x"
+  dragConstraints={{ left: 0, right: 0 }}
+  onDragEnd={(_, info) => {
+    if (info.offset.x < -80) setFiltersOpen(false);
+  }}
+>
+  <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200">
+    <h2 className="text-sm font-medium uppercase tracking-wide">{t.filters}</h2>
+    <button
+      type="button"
+      onClick={() => setFiltersOpen(false)}
+      className="rounded-lg border border-neutral-300 px-3 py-1 text-sm hover:bg-white"
+    >
+      {t.close}
+    </button>
+  </div>
+
+  {/* FORMULARZ FILTRÓW */}
+  <div className="p-4 space-y-4 overflow-y-auto h-[calc(100dvh-56px)]">
+    {/* Szukaj */}
+    <div>
+      <label className="block text-xs uppercase tracking-wide text-neutral-600 mb-1 mt-8">
+        {t.search}
+      </label>
+      <input
+        value={filters.q}
+        onChange={e => setFilters(f => ({ ...f, q: e.target.value }))}
+        placeholder="np. brąz, klasyczny..."
+        className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10"
+      />
     </div>
+
+    {/* Cena */}
+    <fieldset>
+      <legend className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
+        {t.priceRange}
+      </legend>
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          type="number"
+          placeholder={String(bounds.price?.[0] ?? "")}
+          value={filters.price?.[0] ?? ""}
+          onChange={e => {
+            const v = num(e.target.value) ?? undefined;
+            setFilters(f => ({ ...f, price: v != null || f.price?.[1] != null ? [v ?? (bounds.price?.[0] ?? 0), f.price?.[1] ?? (bounds.price?.[1] ?? 0)] : null }));
+          }}
+          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+        />
+        <input
+          type="number"
+          placeholder={String(bounds.price?.[1] ?? "")}
+          value={filters.price?.[1] ?? ""}
+          onChange={e => {
+            const v = num(e.target.value) ?? undefined;
+            setFilters(f => ({ ...f, price: v != null || f.price?.[0] != null ? [f.price?.[0] ?? (bounds.price?.[0] ?? 0), v ?? (bounds.price?.[1] ?? 0)] : null }));
+          }}
+          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+        />
+      </div>
+    </fieldset>
+
+    {/* Długość główna */}
+    <fieldset>
+      <legend className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
+        {t.lengthRange}
+      </legend>
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          type="number"
+          placeholder={String(bounds.length?.[0] ?? "")}
+          value={filters.length?.[0] ?? ""}
+          onChange={e => {
+            const v = num(e.target.value) ?? undefined;
+            setFilters(f => ({ ...f, length: v != null || f.length?.[1] != null ? [v ?? (bounds.length?.[0] ?? 0), f.length?.[1] ?? (bounds.length?.[1] ?? 0)] : null }));
+          }}
+          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+        />
+        <input
+          type="number"
+          placeholder={String(bounds.length?.[1] ?? "")}
+          value={filters.length?.[1] ?? ""}
+          onChange={e => {
+            const v = num(e.target.value) ?? undefined;
+            setFilters(f => ({ ...f, length: v != null || f.length?.[0] != null ? [f.length?.[0] ?? (bounds.length?.[0] ?? 0), v ?? (bounds.length?.[1] ?? 0)] : null }));
+          }}
+          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+        />
+      </div>
+    </fieldset>
+
+    {/* Szerokość klamry */}
+    <fieldset>
+      <legend className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
+        {t.buckleRange}
+      </legend>
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          type="number"
+          placeholder={String(bounds.buckle?.[0] ?? "")}
+          value={filters.buckle?.[0] ?? ""}
+          onChange={e => {
+            const v = num(e.target.value) ?? undefined;
+            setFilters(f => ({ ...f, buckle: v != null || f.buckle?.[1] != null ? [v ?? (bounds.buckle?.[0] ?? 0), f.buckle?.[1] ?? (bounds.buckle?.[1] ?? 0)] : null }));
+          }}
+          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+        />
+        <input
+          type="number"
+          placeholder={String(bounds.buckle?.[1] ?? "")}
+          value={filters.buckle?.[1] ?? ""}
+          onChange={e => {
+            const v = num(e.target.value) ?? undefined;
+            setFilters(f => ({ ...f, buckle: v != null || f.buckle?.[0] != null ? [f.buckle?.[0] ?? (bounds.buckle?.[0] ?? 0), v ?? (bounds.buckle?.[1] ?? 0)] : null }));
+          }}
+          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+        />
+      </div>
+    </fieldset>
+
+    {/* Numer paska */}
+    <div>
+      <label className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
+        {t.beltNo}
+      </label>
+      <input
+        type="number"
+        value={filters.beltNo ?? ""}
+        onChange={e => setFilters(f => ({ ...f, beltNo: e.target.value ? Number(e.target.value) : null }))}
+        placeholder={t.any}
+        className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+      />
+    </div>
+
+    {/* Akcje */}
+    <div className="flex gap-2 pt-2">
+      <button
+        type="button"
+        onClick={() => setFilters({ q: "", price: null, length: null, buckle: null, beltNo: null })}
+        className="flex-1 rounded-xl border border-neutral-300 px-4 py-2 text-sm hover:bg-white"
+      >
+        {t.clearAll}
+      </button>
+      <button
+        type="button"
+        onClick={() => setFiltersOpen(false)}
+        className="flex-1 rounded-xl bg-neutral-900 text-white px-4 py-2 text-sm hover:opacity-90"
+      >
+        {t.apply}
+      </button>
+    </div>
+  </div>
+</motion.aside>
+
+    </div>
+
+    
   );
 }
