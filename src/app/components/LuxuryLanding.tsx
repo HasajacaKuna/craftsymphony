@@ -266,6 +266,25 @@ function CategorySection({
   // HOOKI
 const [processedSrc, setProcessedSrc] = useState<Record<string, string>>({});
 
+
+// helper do wykrycia desktopu
+const useIsDesktop = () => {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const onChange = () => setIsDesktop(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isDesktop;
+};
+
+// w środku CategorySection (obok innych useState):
+const isDesktop = useIsDesktop();
+const [aspect, setAspect] = useState(1);       // naturalWidth / naturalHeight
+const isLandscape = aspect > 1.15;             // wyraźnie poziome?
+
   
   const [active, setActive] = useState(0);
   const [heroIndex, setHeroIndex] = useState(0);
@@ -414,200 +433,313 @@ async function rotateIfLandscape(imgEl: HTMLImageElement, src: string) {
       </div>
 
       {/* HERO */}
-      <div className="relative">
-        <div className="relative w-full">
-          {/* Portretowy kadr (bez mignięć; crossfade) */}
-          <div className="relative w-full md:w-1/2 aspect-[3/4] max-h-[60vh] md:max-h-none overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100 mx-auto">
-            <div
-              className="absolute inset-0"
-              onTouchStart={onTouchStart}
-              onTouchEnd={onTouchEnd}
+{/* HERO */}
+<>
+  {/* === MOBILE (bez zmian + karuzela miniaturek) === */}
+  <div className="relative md:hidden">
+    <div className="relative w-full">
+      {/* Portretowy kadr (bez mignięć; crossfade) */}
+      <div className="relative w-full aspect-[3/4] max-h-[60vh] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100 mx-auto">
+        <div
+          className="absolute inset-0"
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+        >
+          {/* Poprzedni kadr – znika dopiero gdy nowe się załaduje */}
+          {prevUrl && (
+            <motion.div
+              initial={{ opacity: 1 }}
+              animate={{ opacity: nextLoaded ? 0 : 1 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className="absolute inset-0 will-change-[opacity]"
             >
-              {/* Poprzedni kadr – znika dopiero gdy nowe się załaduje */}
-              {prevUrl && (
-                <motion.div
-                  initial={{ opacity: 1 }}
-                  animate={{ opacity: nextLoaded ? 0 : 1 }}
-                  transition={{ duration: 0.35, ease: "easeOut" }}
-                  className="absolute inset-0 will-change-[opacity]"
-                >
-                  <Image
-                    src={prevUrl}
-                    alt=""
-                    fill
-                    sizes="(max-width: 768px) 100vw, 900px"
-                    className="object-cover object-center select-none pointer-events-none"
-                    priority={false}
-                  />
-                </motion.div>
-              )}
+              <Image
+                src={prevUrl}
+                alt=""
+                fill
+                sizes="(max-width: 768px) 100vw"
+                className="object-cover object-center select-none pointer-events-none"
+                priority={false}
+              />
+            </motion.div>
+          )}
 
-              {/* Aktualny kadr – fade-in po załadowaniu */}
-              <motion.div
-                key={heroImg?.url ?? "noimg"}
-                initial={{ opacity: 0.001 }}
-                animate={{ opacity: nextLoaded ? 1 : 0.001 }}
-                transition={{ duration: 0.35, ease: "easeOut" }}
-                className="absolute inset-0 will-change-[opacity]"
-              >
-                {heroImg ? (
-                  <Image
-                    src={heroImg.url}
-                    alt={altFor(
-                      heroImg,
-                      `${UI_STRINGS[lang].heroAltPrefix} ${
-                        belt?.beltNo ?? displayName ?? `${active + 1}`
-                      }`
-                    )}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 900px"
-                    className="object-cover object-center"
-                    onLoadingComplete={() => {
-                      setNextLoaded(true);
-                      setTimeout(() => setPrevUrl(null), 200);
-                    }}
-                    priority={false}
-                  />
-                ) : (
-                  <div className="absolute inset-0 grid place-items-center text-neutral-500">
-                    Brak zdjęcia
-                  </div>
+          {/* Aktualny kadr – fade-in po załadowaniu */}
+          <motion.div
+            key={heroImg?.url ?? "noimg"}
+            initial={{ opacity: 0.001 }}
+            animate={{ opacity: nextLoaded ? 1 : 0.001 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="absolute inset-0 will-change-[opacity]"
+          >
+            {heroImg ? (
+              <Image
+                src={heroImg.url}
+                alt={altFor(
+                  heroImg,
+                  `${UI_STRINGS[lang].heroAltPrefix} ${
+                    belt?.beltNo ?? displayName ?? `${active + 1}`
+                  }`
                 )}
-              </motion.div>
+                fill
+                sizes="(max-width: 768px) 100vw"
+                className="object-cover object-center"
+                onLoadingComplete={() => {
+                  setNextLoaded(true);
+                  setTimeout(() => setPrevUrl(null), 200);
+                }}
+                priority={false}
+              />
+            ) : (
+              <div className="absolute inset-0 grid place-items-center text-neutral-500">
+                Brak zdjęcia
+              </div>
+            )}
+          </motion.div>
 
-              {/* znak wodny */}
-              <div className="absolute left-0 bottom-0 opacity-80">
-                <div className="relative h-16 w-16 overflow-hidden rounded-md">
+          {/* znak wodny */}
+          <div className="absolute left-0 bottom-0 opacity-80">
+            <div className="relative h-16 w-16 overflow-hidden rounded-md">
+              <Image
+                src="/images/znakwodny.png"
+                alt="watermark"
+                fill
+                sizes="64px"
+                className="object-contain pointer-events-none select-none"
+              />
+            </div>
+          </div>
+
+          {/* Strzałki */}
+          <button
+            onClick={goPrev}
+            className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+            aria-label="Poprzednie zdjęcie"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <button
+            onClick={goNext}
+            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+            aria-label="Następne zdjęcie"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {/* Miniaturki — MOBILE */}
+    {beltThumbs.length > 1 && (
+      <div className="mt-3">
+        <div className="flex gap-3 overflow-x-auto px-1 py-1 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {beltThumbs.map((thumb, i) => (
+            <button
+              key={`m-thumb-${thumb.url}-${i}`}
+              onClick={() => handleSelectActive(i)}
+              className={`relative h-24 w-24 flex-none overflow-hidden rounded-lg border snap-start ${
+                i === active
+                  ? "border-neutral-900 ring-2 ring-neutral-900"
+                  : "border-neutral-300 hover:border-neutral-500"
+              }`}
+              aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
+              title={`Pasek ${thumb.beltNo}`}
+            >
+              <div className="relative h-24 w-24">
+                <Image
+                  src={thumb.url}
+                  alt={thumb.alt}
+                  fill
+                  sizes="96px"
+                  className="object-cover rounded-lg"
+                />
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+
+  {/* === DESKTOP (stała wysokość + dynamiczne poszerzanie) === */}
+  <div className="relative hidden md:block">
+    <div className="relative w-full">
+      <motion.div
+        className="
+          relative
+          h-[68vh] max-h-[80vh]
+          overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100
+          mx-auto
+        "
+        // Portret ~56%, landscape 88–96% (im szersze ratio, tym szerzej)
+        animate={{
+          width: isLandscape
+            ? (aspect > 1.9 ? "96%" : aspect > 1.6 ? "92%" : "88%")
+            : "56%",
+        }}
+        initial={false}
+        transition={{ type: "spring", stiffness: 240, damping: 28 }}
+      >
+        <div className="absolute inset-0">
+          {/* Poprzedni kadr – znika dopiero gdy nowe się załaduje */}
+          {prevUrl && (
+            <motion.div
+              initial={{ opacity: 1 }}
+              animate={{ opacity: nextLoaded ? 0 : 1 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className="absolute inset-0 will-change-[opacity]"
+            >
+              <Image
+                src={prevUrl}
+                alt=""
+                fill
+                sizes="1200px"
+                className="object-cover object-center select-none pointer-events-none"
+                priority={false}
+              />
+            </motion.div>
+          )}
+
+          {/* Aktualny kadr – fade-in + pomiar proporcji */}
+          <motion.div
+            key={`desk-${heroImg?.url ?? "noimg"}`}
+            initial={{ opacity: 0.001 }}
+            animate={{ opacity: nextLoaded ? 1 : 0.001 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="absolute inset-0 will-change-[opacity]"
+          >
+            {heroImg ? (
+              <Image
+                src={heroImg.url}
+                alt={altFor(
+                  heroImg,
+                  `${UI_STRINGS[lang].heroAltPrefix} ${
+                    belt?.beltNo ?? displayName ?? `${active + 1}`
+                  }`
+                )}
+                fill
+                sizes="1400px"
+                className="object-cover object-center"
+                onLoadingComplete={(img) => {
+                  setNextLoaded(true);
+                  const el = img as HTMLImageElement;
+                  const nw = el.naturalWidth || 0;
+                  const nh = el.naturalHeight || 1;
+                  setAspect(nw / nh);
+                  setTimeout(() => setPrevUrl(null), 200);
+                }}
+                priority={false}
+              />
+            ) : (
+              <div className="absolute inset-0 grid place-items-center text-neutral-500">
+                Brak zdjęcia
+              </div>
+            )}
+          </motion.div>
+
+          {/* znak wodny */}
+          <div className="absolute left-0 bottom-0 opacity-80">
+            <div className="relative h-16 w-16 overflow-hidden rounded-md">
+              <Image
+                src="/images/znakwodny.png"
+                alt="watermark"
+                fill
+                sizes="64px"
+                className="object-contain pointer-events-none select-none"
+              />
+            </div>
+          </div>
+
+          {/* Strzałki */}
+          <button
+            onClick={goPrev}
+            className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+            aria-label="Poprzednie zdjęcie"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <button
+            onClick={goNext}
+            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+            aria-label="Następne zdjęcie"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        </div>
+      </motion.div>
+    </div>
+
+    {/* Miniaturki — DESKTOP */}
+    {beltThumbs.length > 1 && (
+      <div className="mt-4 relative">
+        <button
+          type="button"
+          aria-label="Przewiń w lewo"
+          onClick={() => scrollDesktopThumbs("left")}
+          className="
+            absolute left-[-2.75rem] top-1/2 -translate-y-1/2 z-10
+            hidden lg:flex h-10 w-10 items-center justify-center
+            text-gray-800 hover:text-gray-900
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
+          "
+        >
+          <ChevronLeft className="h-7 w-7" />
+        </button>
+
+        <div
+          ref={deskThumbsRef}
+          className="
+            relative overflow-x-auto
+            [scrollbar-width:none]
+            [-ms-overflow-style:none]
+            [&::-webkit-scrollbar]:hidden
+          "
+        >
+          <div className="flex gap-3 px-1 py-1">
+            {beltThumbs.map((thumb, i) => (
+              <button
+                key={`d-thumb-${thumb.url}-${i}`}
+                onClick={() => handleSelectActive(i)}
+                className={`relative aspect-square h-24 lg:h-24 flex-none overflow-hidden rounded-lg border transition ${
+                  i === active
+                    ? "border-neutral-500 ring-2 ring-neutral-500"
+                    : "border-neutral-300 hover:border-neutral-500"
+                }`}
+                aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
+                title={`Pasek ${thumb.beltNo}`}
+              >
+                <div className="relative h-full w-full">
                   <Image
-                    src="/images/znakwodny.png"
-                    alt="watermark"
+                    src={thumb.url}
+                    alt={thumb.alt}
                     fill
-                    sizes="64px"
-                    className="object-contain pointer-events-none select-none"
+                    sizes="(max-width:1280px) 120px, 160px"
+                    className="object-cover rounded-lg"
                   />
                 </div>
-              </div>
-
-              {/* Strzałki */}
-              <button
-                onClick={goPrev}
-                className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
-                aria-label="Poprzednie zdjęcie"
-              >
-                <ChevronLeft className="h-6 w-6" />
               </button>
-              <button
-                onClick={goNext}
-                className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
-                aria-label="Następne zdjęcie"
-              >
-                <ChevronRight className="h-6 w-6" />
-              </button>
-            </div>
+            ))}
           </div>
         </div>
 
-        {/* MINIATURKI POD HERO */}
-        {/* Mobile */}
-        {beltThumbs.length > 1 && (
-          <div className="md:hidden mt-3">
-            <div className="flex gap-3 overflow-x-auto px-1 py-1 snap-x snap-mandatory">
-              {beltThumbs.map((thumb, i) => (
-                <button
-                  key={`m-thumb-${thumb.url}-${i}`}
-                  onClick={() => handleSelectActive(i)}
-                  className={`relative h-24 w-24 flex-none overflow-hidden rounded-lg border snap-start ${
-                    i === active
-                      ? "border-neutral-900 ring-2 ring-neutral-900"
-                      : "border-neutral-300 hover:border-neutral-500"
-                  }`}
-                  aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
-                  title={`Pasek ${thumb.beltNo}`}
-                >
-                  <div className="relative h-24 w-24">
-                    <Image
-                      src={thumb.url}
-                      alt={thumb.alt}
-                      fill
-                      sizes="96px"
-                      className="object-cover rounded-lg"
-                    />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Desktop: karuzela miniaturek pod hero */}
-        {beltThumbs.length > 1 && (
-          <div className="hidden md:block mt-4 relative">
-            <button
-              type="button"
-              aria-label="Przewiń w lewo"
-              onClick={() => scrollDesktopThumbs("left")}
-              className="
-                absolute left-[-2.75rem] top-1/2 -translate-y-1/2 z-10
-                hidden lg:flex h-10 w-10 items-center justify-center
-                text-gray-800 hover:text-gray-900
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
-              "
-            >
-              <ChevronLeft className="h-7 w-7" />
-            </button>
-
-            <div
-              ref={deskThumbsRef}
-              className="
-                relative overflow-x-auto
-                [scrollbar-width:none]
-                [-ms-overflow-style:none]
-                [&::-webkit-scrollbar]:hidden
-              "
-            >
-              <div className="flex gap-3 px-1 py-1">
-                {beltThumbs.map((thumb, i) => (
-                  <button
-                    key={`d-thumb-${thumb.url}-${i}`}
-                    onClick={() => handleSelectActive(i)}
-                    className={`relative aspect-square h-24 lg:h-24 flex-none overflow-hidden rounded-lg border transition ${
-                      i === active
-                        ? "border-neutral-500 ring-2 ring-neutral-500"
-                        : "border-neutral-300 hover:border-neutral-500"
-                    }`}
-                    aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
-                    title={`Pasek ${thumb.beltNo}`}
-                  >
-                    <div className="relative h-full w-full">
-                      <Image
-                        src={thumb.url}
-                        alt={thumb.alt}
-                        fill
-                        sizes="(max-width:1280px) 120px, 160px"
-                        className="object-cover rounded-lg"
-                      />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              aria-label="Przewiń w prawo"
-              onClick={() => scrollDesktopThumbs("right")}
-              className="
-                absolute right-[-2.75rem] top-1/2 -translate-y-1/2 z-10
-                hidden lg:flex h-10 w-10 items-center justify-center
-                text-gray-800 hover:text-gray-900
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
-              "
-            >
-              <ChevronRight className="h-7 w-7" />
-            </button>
-          </div>
-        )}
+        <button
+          type="button"
+          aria-label="Przewiń w prawo"
+          onClick={() => scrollDesktopThumbs("right")}
+          className="
+            absolute right-[-2.75rem] top-1/2 -translate-y-1/2 z-10
+            hidden lg:flex h-10 w-10 items-center justify-center
+            text-gray-800 hover:text-gray-900
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
+          "
+        >
+          <ChevronRight className="h-7 w-7" />
+        </button>
       </div>
+    )}
+  </div>
+</>
+
 
       {/* OPIS + ROZMIARÓWKA */}
       <div className="mt-6 md:mt-8 text-center">

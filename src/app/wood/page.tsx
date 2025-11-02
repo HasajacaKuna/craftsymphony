@@ -227,43 +227,49 @@ const flat: WoodCard[] = woodCats.flatMap((cat, catIdx) => {
     }
     return (
       <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {items.map((it) => (
-          <article
-            key={it.id}
-            className="rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm transition-transform hover:-translate-y-0.5"
-          >
-            <div className="relative w-full aspect-square bg-neutral-100">
-              <Image
-                src={it.image}
-                alt={lang === "pl" ? "Produkt drewniany" : "Wood product"}
-                fill
-                sizes="(max-width:640px) 100vw, (max-width:1024px) 50vw, 25vw"
-                className="object-cover object-center"
-              />
-            </div>
-<div className="p-4">
-  {/* NEW: Nazwa i numer nad opisem */}
-  <h3 className="text-base font-medium text-neutral-900 leading-snug line-clamp-2">
-    {lang === "pl" ? it.namePl : it.nameEn || it.namePl}
-  </h3>
-  <div className="mt-0.5 text-xs text-neutral-500">
-    {lang === "pl" ? "Nr:" : "No."}{" "}
-    <span className="tabular-nums">{it.productNo ?? it.id}</span>
-  </div>
+     {items.map((it) => (
+  <article
+    key={it.id}
+    className="flex h-full flex-col rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm "
+  >
+    <div className="relative w-full aspect-square bg-neutral-100">
+      <Image
+        src={it.image}
+        alt={lang === "pl" ? "Produkt drewniany" : "Wood product"}
+        fill
+        sizes="(max-width:640px) 100vw, (max-width:1024px) 50vw, 25vw"
+        className="object-cover object-center"
+      />
+    </div>
 
-  <p className="mt-2 text-sm text-neutral-600 line-clamp-3">
-    {lang === "pl" ? it.descriptionPl : it.descriptionEn || it.descriptionPl}
-  </p>
-  <div className="mt-4 text-sm">
-    <span className="text-neutral-500">{t.price}&nbsp;</span>
-    <span className="font-medium">
-      {formatPriceForLang(it.pricePLN, lang)}
-    </span>
-  </div>
-</div>
+    <div className="p-4 flex grow flex-col">
+      {/* Nazwa (2 linie) */}
+      <h3 className="text-base font-medium text-neutral-900 leading-snug line-clamp-2 min-h-[2.75rem]">
+        {lang === "pl" ? it.namePl : it.nameEn || it.namePl}
+      </h3>
 
-          </article>
-        ))}
+      {/* Numer */}
+      <div className="mt-0.5 text-xs text-neutral-500">
+        {lang === "pl" ? "Nr:" : "No."}{" "}
+        <span className="tabular-nums">{it.productNo ?? it.id}</span>
+      </div>
+
+      {/* Opis (3 linie) */}
+      <p className="mt-2 text-sm text-neutral-600 line-clamp-3 min-h-[3.75rem]">
+        {lang === "pl" ? it.descriptionPl : it.descriptionEn || it.descriptionPl}
+      </p>
+
+      {/* Cena przyklejona do dołu */}
+      <div className="mt-auto pt-4 text-sm">
+        <span className="text-neutral-500">{t.price}&nbsp;</span>
+        <span className="font-medium">
+          {formatPriceForLang(it.pricePLN, lang)}
+        </span>
+      </div>
+    </div>
+  </article>
+))}
+
       </div>
     );
   }, [items, loading, lang]);
