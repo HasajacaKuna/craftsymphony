@@ -74,8 +74,8 @@ type Item = {
   description: string;
   titleEn?: string;
   descriptionEn?: string;
-  rozmiarMin: number;
-  rozmiarMax: number;
+  rozmiarMin?: number | null;
+  rozmiarMax?: number | null;
   rozmiarGlowny?: number | null;
   rozSprz?: number | null;
   cenaPLN: number;
@@ -722,10 +722,11 @@ export default function AdminPage() {
           titleEn: form.titleEn || undefined,
           description: form.description,
           descriptionEn: form.descriptionEn || undefined,
-          rozmiarMin: Number(form.rozmiarMin),
-          rozmiarMax: Number(form.rozmiarMax),
-          rozmiarGlowny: form.rozmiarGlowny ? Number(form.rozmiarGlowny) : undefined,
-          rozSprz: form.rozSprz ? Number(form.rozSprz) : undefined,
+rozmiarMin: !isWoodCreate && form.rozmiarMin !== "" ? Number(form.rozmiarMin) : undefined,
+rozmiarMax: !isWoodCreate && form.rozmiarMax !== "" ? Number(form.rozmiarMax) : undefined,
+rozmiarGlowny: !isWoodCreate && form.rozmiarGlowny !== "" ? Number(form.rozmiarGlowny) : undefined,
+rozSprz: !isWoodCreate && form.rozSprz !== "" ? Number(form.rozSprz) : undefined,
+
           cenaPLN: Number(form.cenaPLN),
           numerPaska: Number(form.numerPaska),
           images: imgs,
@@ -848,10 +849,11 @@ export default function AdminPage() {
           description: data.description,
           titleEn: data.titleEn || undefined,
           descriptionEn: data.descriptionEn || undefined,
-          rozmiarMin: Number(data.rozmiarMin),
-          rozmiarMax: Number(data.rozmiarMax),
-          rozmiarGlowny: data.rozmiarGlowny ? Number(data.rozmiarGlowny) : null,
-          rozSprz: data.rozSprz ? Number(data.rozSprz) : null,
+rozmiarMin: data.rozmiarMin !== "" ? Number(data.rozmiarMin) : null,
+rozmiarMax: data.rozmiarMax !== "" ? Number(data.rozmiarMax) : null,
+rozmiarGlowny: data.rozmiarGlowny !== "" ? Number(data.rozmiarGlowny) : null,
+rozSprz: data.rozSprz !== "" ? Number(data.rozSprz) : null,
+
           cenaPLN: Number(data.cenaPLN),
           numerPaska: Number(data.numerPaska),
           images: merged,
@@ -907,9 +909,19 @@ export default function AdminPage() {
           name: useEN ? nameEN || namePL : namePL,
           description: useEN ? descEN || descPL : descPL,
           price: i.cenaPLN,
-          upperSize: `${Math.max(i.rozmiarMin, i.rozmiarMax)} cm`,
-          lowerSize: `${Math.min(i.rozmiarMin, i.rozmiarMax)} cm`,
-          mainSize: typeof i.rozmiarGlowny === "number" && !isNaN(i.rozmiarGlowny) ? `${i.rozmiarGlowny} cm` : undefined,
+         upperSize:
+  i.rozmiarMin != null && i.rozmiarMax != null
+    ? `${Math.max(Number(i.rozmiarMin), Number(i.rozmiarMax))} cm`
+    : "—",
+lowerSize:
+  i.rozmiarMin != null && i.rozmiarMax != null
+    ? `${Math.min(Number(i.rozmiarMin), Number(i.rozmiarMax))} cm`
+    : "—",
+mainSize:
+  i.rozmiarGlowny != null && !isNaN(Number(i.rozmiarGlowny))
+    ? `${i.rozmiarGlowny} cm`
+    : undefined,
+
           // NOWE: sprzączka → bąbelek po lewej
           buckleSize: typeof i.rozSprz === "number" && !isNaN(i.rozSprz) ? `${i.rozSprz} cm` : undefined,
           image: primary?.url,
@@ -920,6 +932,14 @@ export default function AdminPage() {
       return { title: c.name, belts };
     });
   }, [cats, items, previewLang, autoTranslateEN, enCache]);
+
+// pod: const sortedCats = [...cats]...
+const selectedCat = useMemo(
+  () => cats.find((c) => c._id === form.categoryId),
+  [cats, form.categoryId]
+);
+const isWoodCreate = selectedCat?.slug === "wood";
+
 
   // auto-translate cache — efekt
   useEffect(() => {
@@ -1108,18 +1128,39 @@ export default function AdminPage() {
               <textarea value={form.descriptionEn} onChange={(e) => setForm({ ...form, descriptionEn: e.target.value })} placeholder="Opis (EN)" className="w-full h-[200px]  rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input type="number" value={form.rozmiarMin} onChange={(e) => setForm({ ...form, rozmiarMin: e.target.value })} placeholder="Rozmiar min (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
-              <input type="number" value={form.rozmiarMax} onChange={(e) => setForm({ ...form, rozmiarMax: e.target.value })} placeholder="Rozmiar max (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
-              <input
-                type="number"
-                value={form.rozSprz}
-                onChange={(e) => setForm({ ...form, rozSprz: e.target.value })}
-                placeholder="Rozmiar sprzączki (cm)"
-                className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-              />
-              <input type="number" value={form.rozmiarGlowny} onChange={(e) => setForm({ ...form, rozmiarGlowny: e.target.value })} placeholder="Rozmiar główny (cm)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" />
-            </div>
+{!isWoodCreate && (
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <input
+      type="number"
+      value={form.rozmiarMin}
+      onChange={(e) => setForm({ ...form, rozmiarMin: e.target.value })}
+      placeholder="Rozmiar min (cm)"
+      className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+    />
+    <input
+      type="number"
+      value={form.rozmiarMax}
+      onChange={(e) => setForm({ ...form, rozmiarMax: e.target.value })}
+      placeholder="Rozmiar max (cm)"
+      className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+    />
+    <input
+      type="number"
+      value={form.rozSprz}
+      onChange={(e) => setForm({ ...form, rozSprz: e.target.value })}
+      placeholder="Rozmiar sprzączki (cm)"
+      className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+    />
+    <input
+      type="number"
+      value={form.rozmiarGlowny}
+      onChange={(e) => setForm({ ...form, rozmiarGlowny: e.target.value })}
+      placeholder="Rozmiar główny (cm)"
+      className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+    />
+  </div>
+)}
+
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <input type="number" value={form.cenaPLN} onChange={(e) => setForm({ ...form, cenaPLN: e.target.value })} placeholder="Cena (PLN)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
@@ -1251,7 +1292,12 @@ export default function AdminPage() {
                               <div className="font-medium text-base">{it.title}</div>
                               <div className="text-neutral-600">EN: {it.titleEn || "—"}</div>
                               <div className="text-neutral-600">Kategoria: {catName}</div>
-                              <div className="text-neutral-600">Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm</div>
+                             {it.rozmiarMin != null && it.rozmiarMax != null ? (
+  <div className="text-neutral-600">Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm</div>
+) : (
+  <div className="text-neutral-600">Rozmiar: —</div>
+)}
+
                               {typeof it.rozmiarGlowny === "number" && (
                                 <div className="text-neutral-600">Rozmiar główny: {it.rozmiarGlowny} cm</div>
                               )}
