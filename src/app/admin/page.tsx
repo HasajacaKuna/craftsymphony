@@ -1164,7 +1164,7 @@ const isWoodCreate = selectedCat?.slug === "wood";
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <input type="number" value={form.cenaPLN} onChange={(e) => setForm({ ...form, cenaPLN: e.target.value })} placeholder="Cena (PLN)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
-              <input type="number" value={form.numerPaska} onChange={(e) => setForm({ ...form, numerPaska: e.target.value })} placeholder="Nr paska" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
+              <input type="number" value={form.numerPaska} onChange={(e) => setForm({ ...form, numerPaska: e.target.value })} placeholder="Nr" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
             </div>
 
             {/* UPLOAD WIELOKROTNY */}

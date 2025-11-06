@@ -297,49 +297,54 @@ const flat: WoodCard[] = woodCats.flatMap((cat, catIdx) => {
               {t.interestedText}
             </p>
 
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget as HTMLFormElement);
-                const email = String(fd.get("email") || "");
-                const no = String(fd.get("productNo") || "");
-                if (!email || !no) return;
-                // TODO: wyślij do swojego endpointu (np. /api/inquiry)
-                console.log("send inquiry", { email, productNo: no });
-                alert(
-                  lang === "pl"
-                    ? "Wysłano zapytanie. Dziękujemy!"
-                    : "Request sent. Thank you!"
-                );
-                (e.currentTarget as HTMLFormElement).reset();
-              }}
-              className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
-            >
-              <input
-                name="email"
-                type="email"
-                required
-                placeholder={t.emailPh}
-                className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-                aria-label={t.emailPh}
-              />
-              <input
-                name="productNo"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]{1,6}"
-                required
-                placeholder={t.productNoPh}
-                aria-label={t.productNoPh}
-                className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-              />
-              <button
-                type="submit"
-                className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition disabled:opacity-50"
-              >
-                {t.send}
-              </button>
-            </form>
+<form
+  onSubmit={async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement;
+    const fd = new FormData(form);
+
+    const res = await fetch("/api/inquiry", {
+      method: "POST",
+      body: fd, // API obsługuje FormData
+    });
+
+    if (res.ok) {
+      alert(lang === "pl" ? "Wysłano zapytanie. Dziękujemy!" : "Request sent. Thank you!");
+      form.reset();
+    } else {
+      alert(lang === "pl" ? "Błąd wysyłki — spróbuj ponownie." : "Send error — try again.");
+    }
+  }}
+  className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
+>
+  <input
+    name="email"
+    type="email"
+    required
+    placeholder={t.emailPh}
+    className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+    aria-label={t.emailPh}
+  />
+  <input
+    name="productNo"
+    type="text"
+    inputMode="numeric"
+    pattern="[0-9]{1,6}"
+    required
+    placeholder={t.productNoPh}
+    aria-label={t.productNoPh}
+    className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+  />
+  {/* honeypot (anty-spam) */}
+  <input type="text" name="company" className="hidden" tabIndex={-1} autoComplete="off" />
+  <button
+    type="submit"
+    className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition disabled:opacity-50"
+  >
+    {t.send}
+  </button>
+</form>
+
           </div>
 
           {/* Obraz + opis na dole */}
