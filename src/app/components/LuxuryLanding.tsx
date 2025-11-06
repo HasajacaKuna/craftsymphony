@@ -60,11 +60,10 @@ export type BeltItem = {
   buckleSize?: string | number; // sprzączka
   beltNo?: number;
   upperSizeNum?: number | null;
-lowerSizeNum?: number | null;
-mainSizeNum?: number | null;
-buckleSizeNum?: number | null;
-priceNum?: number | null;
-
+  lowerSizeNum?: number | null;
+  mainSizeNum?: number | null;
+  buckleSizeNum?: number | null;
+  priceNum?: number | null;
 };
 
 export type CategoryData = {
@@ -99,15 +98,19 @@ const UI_STRINGS: Record<
     openFilters: string;
     close: string;
     apply: string;
-    clearAll:string;
-    search:string;
+    clearAll: string;
+    search: string;
     priceRange: string;
-    lengthRange:string;
-    buckleRange:string;
-    beltNo:string;
-    matching:string;
+    lengthRange: string;
+    buckleRange: string;
+    beltNo: string;
+    matching: string;
     any: string;
 
+    /* NEW: modal */
+    successTitle: string;
+    successText: string;
+    ok: string;
   }
 > = {
   pl: {
@@ -131,20 +134,24 @@ const UI_STRINGS: Record<
       "Każdy pasek powstaje w całości ręcznie – od doboru skóry, przez cięcie i barwienie, po wykończenie krawędzi. Wierzymy w rzemiosło, które ma duszę: staranność detalu i ponadczasowy charakter. Nasze paski łączą tradycję z nowoczesną precyzją — projektowane z myślą o trwałości i pięknie, które dojrzewa z czasem.",
     loading: "Ładowanie katalogu…",
     empty: "Brak produktów do wyświetlenia.",
-    // W KAŻDYM języku (pl/en) dodaj:
-filters: "Filtry",
-openFilters: "Pokaż filtry",
-close: "Zamknij",
-apply: "Zastosuj",
-clearAll: "Wyczyść",
-search: "Szukaj",
-priceRange: "Cena (PLN)",
-lengthRange: "Długość paska (cm)",
-buckleRange: "Szerokość klamry (cm)",
-beltNo: "Numer paska",
-matching: "pasuje",
-any: "Dowolny"
+    filters: "Filtry",
+    openFilters: "Pokaż filtry",
+    close: "Zamknij",
+    apply: "Zastosuj",
+    clearAll: "Wyczyść",
+    search: "Szukaj",
+    priceRange: "Cena (PLN)",
+    lengthRange: "Długość paska (cm)",
+    buckleRange: "Szerokość klamry (cm)",
+    beltNo: "Numer paska",
+    matching: "pasuje",
+    any: "Dowolny",
 
+    /* Modal */
+    successTitle: "Dziękujemy za wiadomość!",
+    successText:
+      "Odezwiemy się najszybciej jak to możliwe. Sprawdź skrzynkę — wkrótce dostaniesz od nas odpowiedź.",
+    ok: "OK, super",
   },
   en: {
     navLeather: "Leather",
@@ -168,18 +175,23 @@ any: "Dowolny"
     loading: "Loading catalog…",
     empty: "No products to display.",
     filters: "Filters",
-openFilters: "Show filters",
-close: "Close",
-apply: "Apply",
-clearAll: "Clear",
-search: "Search",
-priceRange: "Price (PLN)",
-lengthRange: "Belt length (cm)",
-buckleRange: "Buckle width (cm)",
-beltNo: "Belt number",
-matching: "match",
-any: "Any"
+    openFilters: "Show filters",
+    close: "Close",
+    apply: "Apply",
+    clearAll: "Clear",
+    search: "Search",
+    priceRange: "Price (PLN)",
+    lengthRange: "Belt length (cm)",
+    buckleRange: "Buckle width (cm)",
+    beltNo: "Belt number",
+    matching: "match",
+    any: "Any",
 
+    /* Modal */
+    successTitle: "Thank you for your message!",
+    successText:
+      "We’ll get back to you as soon as possible. Please keep an eye on your inbox.",
+    ok: "Great",
   },
 };
 
@@ -264,28 +276,25 @@ function CategorySection({
   lang,
 }: CategoryData & { labels: Labels; lang: Lang }) {
   // HOOKI
-const [processedSrc, setProcessedSrc] = useState<Record<string, string>>({});
+  const [processedSrc, setProcessedSrc] = useState<Record<string, string>>({});
 
+  // helper do wykrycia desktopu
+  const useIsDesktop = () => {
+    const [isDesktop, setIsDesktop] = useState(false);
+    useEffect(() => {
+      const mq = window.matchMedia("(min-width: 768px)");
+      const onChange = () => setIsDesktop(mq.matches);
+      onChange();
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    }, []);
+    return isDesktop;
+  };
 
-// helper do wykrycia desktopu
-const useIsDesktop = () => {
-  const [isDesktop, setIsDesktop] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 768px)");
-    const onChange = () => setIsDesktop(mq.matches);
-    onChange();
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return isDesktop;
-};
+  const isDesktop = useIsDesktop();
+  const [aspect, setAspect] = useState(1); // naturalWidth / naturalHeight
+  const isLandscape = aspect > 1.15; // wyraźnie poziome?
 
-// w środku CategorySection (obok innych useState):
-const isDesktop = useIsDesktop();
-const [aspect, setAspect] = useState(1);       // naturalWidth / naturalHeight
-const isLandscape = aspect > 1.15;             // wyraźnie poziome?
-
-  
   const [active, setActive] = useState(0);
   const [heroIndex, setHeroIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
@@ -322,7 +331,6 @@ const isLandscape = aspect > 1.15;             // wyraźnie poziome?
   useEffect(() => {
     const p = pickPrimary(beltGallery);
     setHeroIndex(Math.max(0, beltGallery.indexOf(p ?? beltGallery[0])));
-    // gdy zmienia się pasek, włącz crossfade ze starego kadru
     setPrevUrl((u) => u ?? gallery[heroIndex]?.url ?? null);
     setNextLoaded(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -345,8 +353,6 @@ const isLandscape = aspect > 1.15;             // wyraźnie poziome?
     }
     setTouchStartX(null);
   };
-
-  
 
   // miniatury: primary (albo fallback) każdego paska
   const beltThumbs = items
@@ -375,53 +381,43 @@ const isLandscape = aspect > 1.15;             // wyraźnie poziome?
 
   const heroImg = gallery[heroIndex] ?? gallery[0];
 
-  // helper do płynnej zmiany zdjęcia w tej samej galerii
   const setHeroSafely = (updater: (i: number) => number) => {
     setPrevUrl(gallery[heroIndex]?.url ?? null);
     setNextLoaded(false);
     setHeroIndex(updater);
   };
 
-  // strzałki
   const goPrev = () => setHeroSafely((i) => (i > 0 ? i - 1 : gallery.length - 1));
   const goNext = () => setHeroSafely((i) => (i < gallery.length - 1 ? i + 1 : 0));
 
-  // klik na miniaturze (desktop/mobile)
   const handleSelectActive = (i: number) => {
     setPrevUrl(gallery[heroIndex]?.url ?? null);
     setNextLoaded(false);
     setActive(i);
   };
 
-  // Obrót poziomych obrazów o 90° (-> pion) i zwrot dataURL; bezpieczny (CORS -> fallback)
-async function rotateIfLandscape(imgEl: HTMLImageElement, src: string) {
-  try {
-    const nw = imgEl.naturalWidth;
-    const nh = imgEl.naturalHeight;
-    if (!nw || !nh) return null;
-    if (nw <= nh) return null; // już pion — nic nie rób
+  async function rotateIfLandscape(imgEl: HTMLImageElement, src: string) {
+    try {
+      const nw = imgEl.naturalWidth;
+      const nh = imgEl.naturalHeight;
+      if (!nw || !nh) return null;
+      if (nw <= nh) return null;
 
-    // Canvas: po obrocie szerokość = nh, wysokość = nw
-    const canvas = document.createElement("canvas");
-    canvas.width = nh;
-    canvas.height = nw;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
+      const canvas = document.createElement("canvas");
+      canvas.width = nh;
+      canvas.height = nw;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
 
-    // środek -> obrót 90° -> rysunek
-    ctx.translate(nh / 2, nw / 2);
-    ctx.rotate(Math.PI / 2);
-    ctx.drawImage(imgEl, -nw / 2, -nh / 2, nw, nh);
-
-    // Jakość 0.9; można zmienić na "image/png" jeśli wolisz bezstratnie
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-    return dataUrl;
-  } catch {
-    // np. CORS „tainted canvas” — trudno, zostaw oryginał
-    return null;
+      ctx.translate(nh / 2, nw / 2);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(imgEl, -nw / 2, -nh / 2, nw, nh);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+      return dataUrl;
+    } catch {
+      return null;
+    }
   }
-}
-
 
   return (
     <div>
@@ -433,313 +429,309 @@ async function rotateIfLandscape(imgEl: HTMLImageElement, src: string) {
       </div>
 
       {/* HERO */}
-{/* HERO */}
-<>
-  {/* === MOBILE (bez zmian + karuzela miniaturek) === */}
-  <div className="relative md:hidden">
-    <div className="relative w-full">
-      {/* Portretowy kadr (bez mignięć; crossfade) */}
-      <div className="relative w-full aspect-[3/4] max-h-[60vh] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100 mx-auto">
-        <div
-          className="absolute inset-0"
-          onTouchStart={onTouchStart}
-          onTouchEnd={onTouchEnd}
-        >
-          {/* Poprzedni kadr – znika dopiero gdy nowe się załaduje */}
-          {prevUrl && (
-            <motion.div
-              initial={{ opacity: 1 }}
-              animate={{ opacity: nextLoaded ? 0 : 1 }}
-              transition={{ duration: 0.35, ease: "easeOut" }}
-              className="absolute inset-0 will-change-[opacity]"
-            >
-              <Image
-                src={prevUrl}
-                alt=""
-                fill
-                sizes="(max-width: 768px) 100vw"
-                className="object-cover object-center select-none pointer-events-none"
-                priority={false}
-              />
-            </motion.div>
-          )}
-
-          {/* Aktualny kadr – fade-in po załadowaniu */}
-          <motion.div
-            key={heroImg?.url ?? "noimg"}
-            initial={{ opacity: 0.001 }}
-            animate={{ opacity: nextLoaded ? 1 : 0.001 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-            className="absolute inset-0 will-change-[opacity]"
-          >
-            {heroImg ? (
-              <Image
-                src={heroImg.url}
-                alt={altFor(
-                  heroImg,
-                  `${UI_STRINGS[lang].heroAltPrefix} ${
-                    belt?.beltNo ?? displayName ?? `${active + 1}`
-                  }`
-                )}
-                fill
-                sizes="(max-width: 768px) 100vw"
-                className="object-cover object-center"
-                onLoadingComplete={() => {
-                  setNextLoaded(true);
-                  setTimeout(() => setPrevUrl(null), 200);
-                }}
-                priority={false}
-              />
-            ) : (
-              <div className="absolute inset-0 grid place-items-center text-neutral-500">
-                Brak zdjęcia
-              </div>
-            )}
-          </motion.div>
-
-          {/* znak wodny */}
-          <div className="absolute left-0 bottom-0 opacity-80">
-            <div className="relative h-16 w-16 overflow-hidden rounded-md">
-              <Image
-                src="/images/znakwodny.png"
-                alt="watermark"
-                fill
-                sizes="64px"
-                className="object-contain pointer-events-none select-none"
-              />
-            </div>
-          </div>
-
-          {/* Strzałki */}
-          <button
-            onClick={goPrev}
-            className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
-            aria-label="Poprzednie zdjęcie"
-          >
-            <ChevronLeft className="h-6 w-6" />
-          </button>
-          <button
-            onClick={goNext}
-            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
-            aria-label="Następne zdjęcie"
-          >
-            <ChevronRight className="h-6 w-6" />
-          </button>
-        </div>
-      </div>
-    </div>
-
-    {/* Miniaturki — MOBILE */}
-    {beltThumbs.length > 1 && (
-      <div className="mt-3">
-        <div className="flex gap-3 overflow-x-auto px-1 py-1 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          {beltThumbs.map((thumb, i) => (
-            <button
-              key={`m-thumb-${thumb.url}-${i}`}
-              onClick={() => handleSelectActive(i)}
-              className={`relative h-24 w-24 flex-none overflow-hidden rounded-lg border snap-start ${
-                i === active
-                  ? "border-neutral-900 ring-2 ring-neutral-900"
-                  : "border-neutral-300 hover:border-neutral-500"
-              }`}
-              aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
-              title={`Pasek ${thumb.beltNo}`}
-            >
-              <div className="relative h-24 w-24">
-                <Image
-                  src={thumb.url}
-                  alt={thumb.alt}
-                  fill
-                  sizes="96px"
-                  className="object-cover rounded-lg"
-                />
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-    )}
-  </div>
-
-  {/* === DESKTOP (stała wysokość + dynamiczne poszerzanie) === */}
-  <div className="relative hidden md:block">
-    <div className="relative w-full">
-      <motion.div
-        className="
-          relative
-          h-[68vh] max-h-[80vh]
-          overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100
-          mx-auto
-        "
-        // Portret ~56%, landscape 88–96% (im szersze ratio, tym szerzej)
-        animate={{
-          width: isLandscape
-            ? (aspect > 1.9 ? "96%" : aspect > 1.6 ? "92%" : "88%")
-            : "56%",
-        }}
-        initial={false}
-        transition={{ type: "spring", stiffness: 240, damping: 28 }}
-      >
-        <div className="absolute inset-0">
-          {/* Poprzedni kadr – znika dopiero gdy nowe się załaduje */}
-          {prevUrl && (
-            <motion.div
-              initial={{ opacity: 1 }}
-              animate={{ opacity: nextLoaded ? 0 : 1 }}
-              transition={{ duration: 0.35, ease: "easeOut" }}
-              className="absolute inset-0 will-change-[opacity]"
-            >
-              <Image
-                src={prevUrl}
-                alt=""
-                fill
-                sizes="1200px"
-                className="object-cover object-center select-none pointer-events-none"
-                priority={false}
-              />
-            </motion.div>
-          )}
-
-          {/* Aktualny kadr – fade-in + pomiar proporcji */}
-          <motion.div
-            key={`desk-${heroImg?.url ?? "noimg"}`}
-            initial={{ opacity: 0.001 }}
-            animate={{ opacity: nextLoaded ? 1 : 0.001 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-            className="absolute inset-0 will-change-[opacity]"
-          >
-            {heroImg ? (
-              <Image
-                src={heroImg.url}
-                alt={altFor(
-                  heroImg,
-                  `${UI_STRINGS[lang].heroAltPrefix} ${
-                    belt?.beltNo ?? displayName ?? `${active + 1}`
-                  }`
-                )}
-                fill
-                sizes="1400px"
-                className="object-cover object-center"
-                onLoadingComplete={(img) => {
-                  setNextLoaded(true);
-                  const el = img as HTMLImageElement;
-                  const nw = el.naturalWidth || 0;
-                  const nh = el.naturalHeight || 1;
-                  setAspect(nw / nh);
-                  setTimeout(() => setPrevUrl(null), 200);
-                }}
-                priority={false}
-              />
-            ) : (
-              <div className="absolute inset-0 grid place-items-center text-neutral-500">
-                Brak zdjęcia
-              </div>
-            )}
-          </motion.div>
-
-          {/* znak wodny */}
-          <div className="absolute left-0 bottom-0 opacity-80">
-            <div className="relative h-16 w-16 overflow-hidden rounded-md">
-              <Image
-                src="/images/znakwodny.png"
-                alt="watermark"
-                fill
-                sizes="64px"
-                className="object-contain pointer-events-none select-none"
-              />
-            </div>
-          </div>
-
-          {/* Strzałki */}
-          <button
-            onClick={goPrev}
-            className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
-            aria-label="Poprzednie zdjęcie"
-          >
-            <ChevronLeft className="h-6 w-6" />
-          </button>
-          <button
-            onClick={goNext}
-            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
-            aria-label="Następne zdjęcie"
-          >
-            <ChevronRight className="h-6 w-6" />
-          </button>
-        </div>
-      </motion.div>
-    </div>
-
-    {/* Miniaturki — DESKTOP */}
-    {beltThumbs.length > 1 && (
-      <div className="mt-4 relative">
-        <button
-          type="button"
-          aria-label="Przewiń w lewo"
-          onClick={() => scrollDesktopThumbs("left")}
-          className="
-            absolute left-[-2.75rem] top-1/2 -translate-y-1/2 z-10
-            hidden lg:flex h-10 w-10 items-center justify-center
-            text-gray-800 hover:text-gray-900
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
-          "
-        >
-          <ChevronLeft className="h-7 w-7" />
-        </button>
-
-        <div
-          ref={deskThumbsRef}
-          className="
-            relative overflow-x-auto
-            [scrollbar-width:none]
-            [-ms-overflow-style:none]
-            [&::-webkit-scrollbar]:hidden
-          "
-        >
-          <div className="flex gap-3 px-1 py-1">
-            {beltThumbs.map((thumb, i) => (
-              <button
-                key={`d-thumb-${thumb.url}-${i}`}
-                onClick={() => handleSelectActive(i)}
-                className={`relative aspect-square h-24 lg:h-24 flex-none overflow-hidden rounded-lg border transition ${
-                  i === active
-                    ? "border-neutral-500 ring-2 ring-neutral-500"
-                    : "border-neutral-300 hover:border-neutral-500"
-                }`}
-                aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
-                title={`Pasek ${thumb.beltNo}`}
+      <>
+        {/* === MOBILE === */}
+        <div className="relative md:hidden">
+          <div className="relative w-full">
+            <div className="relative w-full aspect-[3/4] max-h-[60vh] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100 mx-auto">
+              <div
+                className="absolute inset-0"
+                onTouchStart={onTouchStart}
+                onTouchEnd={onTouchEnd}
               >
-                <div className="relative h-full w-full">
-                  <Image
-                    src={thumb.url}
-                    alt={thumb.alt}
-                    fill
-                    sizes="(max-width:1280px) 120px, 160px"
-                    className="object-cover rounded-lg"
-                  />
+                {prevUrl && (
+                  <motion.div
+                    initial={{ opacity: 1 }}
+                    animate={{ opacity: nextLoaded ? 0 : 1 }}
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                    className="absolute inset-0 will-change-[opacity]"
+                  >
+                    <Image
+                      src={prevUrl}
+                      alt=""
+                      fill
+                      sizes="(max-width: 768px) 100vw"
+                      className="object-cover object-center select-none pointer-events-none"
+                      priority={false}
+                    />
+                  </motion.div>
+                )}
+
+                <motion.div
+                  key={heroImg?.url ?? "noimg"}
+                  initial={{ opacity: 0.001 }}
+                  animate={{ opacity: nextLoaded ? 1 : 0.001 }}
+                  transition={{ duration: 0.35, ease: "easeOut" }}
+                  className="absolute inset-0 will-change-[opacity]"
+                >
+                  {heroImg ? (
+                    <Image
+                      src={heroImg.url}
+                      alt={altFor(
+                        heroImg,
+                        `${UI_STRINGS[lang].heroAltPrefix} ${
+                          belt?.beltNo ?? displayName ?? `${active + 1}`
+                        }`
+                      )}
+                      fill
+                      sizes="(max-width: 768px) 100vw"
+                      className="object-cover object-center"
+                      onLoadingComplete={() => {
+                        setNextLoaded(true);
+                        setTimeout(() => setPrevUrl(null), 200);
+                      }}
+                      priority={false}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 grid place-items-center text-neutral-500">
+                      Brak zdjęcia
+                    </div>
+                  )}
+                </motion.div>
+
+                {/* znak wodny */}
+                <div className="absolute left-0 bottom-0 opacity-80">
+                  <div className="relative h-16 w-16 overflow-hidden rounded-md">
+                    <Image
+                      src="/images/znakwodny.png"
+                      alt="watermark"
+                      fill
+                      sizes="64px"
+                      className="object-contain pointer-events-none select-none"
+                    />
+                  </div>
                 </div>
-              </button>
-            ))}
+
+                {/* Strzałki */}
+                <button
+                  onClick={goPrev}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white"
+                  aria-label="Poprzednie zdjęcie"
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button
+                  onClick={goNext}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white"
+                  aria-label="Następne zdjęcie"
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </div>
+            </div>
           </div>
+
+          {/* Miniaturki — MOBILE */}
+          {beltThumbs.length > 1 && (
+            <div className="mt-3">
+              <div className="flex gap-3 overflow-x-auto px-1 py-1 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                {beltThumbs.map((thumb, i) => (
+                  <button
+                    key={`m-thumb-${thumb.url}-${i}`}
+                    onClick={() => handleSelectActive(i)}
+                    className={`relative h-24 w-24 flex-none overflow-hidden rounded-lg border snap-start ${
+                      i === active
+                        ? "border-neutral-900 ring-2 ring-neutral-900"
+                        : "border-neutral-300 hover:border-neutral-500"
+                    }`}
+                    aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
+                    title={`Pasek ${thumb.beltNo}`}
+                  >
+                    <div className="relative h-24 w-24">
+                      <Image
+                        src={thumb.url}
+                        alt={thumb.alt}
+                        fill
+                        sizes="96px"
+                        className="object-cover rounded-lg"
+                      />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        <button
-          type="button"
-          aria-label="Przewiń w prawo"
-          onClick={() => scrollDesktopThumbs("right")}
-          className="
-            absolute right-[-2.75rem] top-1/2 -translate-y-1/2 z-10
-            hidden lg:flex h-10 w-10 items-center justify-center
-            text-gray-800 hover:text-gray-900
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
-          "
-        >
-          <ChevronRight className="h-7 w-7" />
-        </button>
-      </div>
-    )}
-  </div>
-</>
+        {/* === DESKTOP === */}
+        <div className="relative hidden md:block">
+          <div className="relative w-full">
+            <motion.div
+              className="
+                relative
+                h-[68vh] max-h-[80vh]
+                overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100
+                mx-auto
+              "
+              animate={{
+                width: isLandscape
+                  ? aspect > 1.9
+                    ? "96%"
+                    : aspect > 1.6
+                    ? "92%"
+                    : "88%"
+                  : "56%",
+              }}
+              initial={false}
+              transition={{ type: "spring", stiffness: 240, damping: 28 }}
+            >
+              <div className="absolute inset-0">
+                {prevUrl && (
+                  <motion.div
+                    initial={{ opacity: 1 }}
+                    animate={{ opacity: nextLoaded ? 0 : 1 }}
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                    className="absolute inset-0 will-change-[opacity]"
+                  >
+                    <Image
+                      src={prevUrl}
+                      alt=""
+                      fill
+                      sizes="1200px"
+                      className="object-cover object-center select-none pointer-events-none"
+                      priority={false}
+                    />
+                  </motion.div>
+                )}
 
+                <motion.div
+                  key={`desk-${heroImg?.url ?? "noimg"}`}
+                  initial={{ opacity: 0.001 }}
+                  animate={{ opacity: nextLoaded ? 1 : 0.001 }}
+                  transition={{ duration: 0.35, ease: "easeOut" }}
+                  className="absolute inset-0 will-change-[opacity]"
+                >
+                  {heroImg ? (
+                    <Image
+                      src={heroImg.url}
+                      alt={altFor(
+                        heroImg,
+                        `${UI_STRINGS[lang].heroAltPrefix} ${
+                          belt?.beltNo ?? displayName ?? `${active + 1}`
+                        }`
+                      )}
+                      fill
+                      sizes="1400px"
+                      className="object-cover object-center"
+                      onLoadingComplete={(img) => {
+                        setNextLoaded(true);
+                        const el = img as HTMLImageElement;
+                        const nw = el.naturalWidth || 0;
+                        const nh = el.naturalHeight || 1;
+                        setAspect(nw / nh);
+                        setTimeout(() => setPrevUrl(null), 200);
+                      }}
+                      priority={false}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 grid place-items-center text-neutral-500">
+                      Brak zdjęcia
+                    </div>
+                  )}
+                </motion.div>
+
+                {/* znak wodny */}
+                <div className="absolute left-0 bottom-0 opacity-80">
+                  <div className="relative h-16 w-16 overflow-hidden rounded-md">
+                    <Image
+                      src="/images/znakwodny.png"
+                      alt="watermark"
+                      fill
+                      sizes="64px"
+                      className="object-contain pointer-events-none select-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Strzałki */}
+                <button
+                  onClick={goPrev}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white"
+                  aria-label="Poprzednie zdjęcie"
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button
+                  onClick={goNext}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white"
+                  aria-label="Następne zdjęcie"
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Miniaturki — DESKTOP */}
+          {beltThumbs.length > 1 && (
+            <div className="mt-4 relative">
+              <button
+                type="button"
+                aria-label="Przewiń w lewo"
+                onClick={() => scrollDesktopThumbs("left")}
+                className="
+                  absolute left-[-2.75rem] top-1/2 -translate-y-1/2 z-10
+                  hidden lg:flex h-10 w-10 items-center justify-center
+                  text-gray-800 hover:text-gray-900
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
+                "
+              >
+                <ChevronLeft className="h-7 w-7" />
+              </button>
+
+              <div
+                ref={deskThumbsRef}
+                className="
+                  relative overflow-x-auto
+                  [scrollbar-width:none]
+                  [-ms-overflow-style:none]
+                  [&::-webkit-scrollbar]:hidden
+                "
+              >
+                <div className="flex gap-3 px-1 py-1">
+                  {beltThumbs.map((thumb, i) => (
+                    <button
+                      key={`d-thumb-${thumb.url}-${i}`}
+                      onClick={() => handleSelectActive(i)}
+                      className={`relative aspect-square h-24 lg:h-24 flex-none overflow-hidden rounded-lg border transition ${
+                        i === active
+                          ? "border-neutral-500 ring-2 ring-neutral-500"
+                          : "border-neutral-300 hover:border-neutral-500"
+                      }`}
+                      aria-label={`${labels.selectBelt} ${thumb.beltNo}`}
+                      title={`Pasek ${thumb.beltNo}`}
+                    >
+                      <div className="relative h-full w-full">
+                        <Image
+                          src={thumb.url}
+                          alt={thumb.alt}
+                          fill
+                          sizes="(max-width:1280px) 120px, 160px"
+                          className="object-cover rounded-lg"
+                        />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                aria-label="Przewiń w prawo"
+                onClick={() => scrollDesktopThumbs("right")}
+                className="
+                  absolute right-[-2.75rem] top-1/2 -translate-y-1/2 z-10
+                  hidden lg:flex h-10 w-10 items-center justify-center
+                  text-gray-800 hover:text-gray-900
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800/40 rounded-full
+                "
+              >
+                <ChevronRight className="h-7 w-7" />
+              </button>
+            </div>
+          )}
+        </div>
+      </>
 
       {/* OPIS + ROZMIARÓWKA */}
       <div className="mt-6 md:mt-8 text-center">
@@ -750,7 +742,7 @@ async function rotateIfLandscape(imgEl: HTMLImageElement, src: string) {
             {displayName || "—"}
           </h3>
 
-          <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">
+        <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">
             {displayDesc}
           </p>
         </div>
@@ -842,6 +834,73 @@ async function rotateIfLandscape(imgEl: HTMLImageElement, src: string) {
   );
 }
 
+/* ===== Prosty modal „Dziękujemy” ===== */
+function Modal({
+  open,
+  onClose,
+  title,
+  text,
+  okLabel,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  text: string;
+  okLabel: string;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    if (open) {
+      document.addEventListener("keydown", onKey);
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.removeEventListener("keydown", onKey);
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="thanks-title"
+    >
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+      />
+      <div
+        ref={ref}
+        className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-neutral-200 p-6 text-center"
+      >
+        <h3 id="thanks-title" className="text-lg font-semibold text-neutral-900">
+          {title}
+        </h3>
+        <p className="mt-2 text-sm text-neutral-600 leading-relaxed">
+          {text}
+        </p>
+
+        <div className="mt-5 flex justify-center">
+          <button
+            onClick={onClose}
+            className="px-5 py-2 rounded-xl bg-neutral-900 text-white hover:bg-neutral-800 transition"
+            autoFocus
+          >
+            {okLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ===== Główny komponent – TYLKO dane z bazy ===== */
 export default function LuxuryLanding({
   logo = "/images/logo3.png",
@@ -858,32 +917,39 @@ export default function LuxuryLanding({
   const [data, setData] = useState<CategoryData[] | null>(null);
   const [loading, setLoading] = useState(true);
 
-const [isFiltersOpen, setFiltersOpen] = useState(false);
+  const [isFiltersOpen, setFiltersOpen] = useState(false);
 
-useEffect(() => {
-  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setFiltersOpen(false); };
-  document.addEventListener("keydown", onKey);
-  document.body.style.overflow = isFiltersOpen ? "hidden" : "";
-  return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
-}, [isFiltersOpen]);
+  // NEW: modal + powrót z FormSubmit
+  const [showThanks, setShowThanks] = useState(false);
+  const [nextUrl, setNextUrl] = useState<string>("");
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFiltersOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = isFiltersOpen ? "hidden" : "";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [isFiltersOpen]);
 
-type Filters = {
-  q: string;
-  price?: [number, number] | null;
-  length?: [number, number] | null; // po mainSizeNum
-  buckle?: [number, number] | null;
-  beltNo?: number | null;
-};
+  type Filters = {
+    q: string;
+    price?: [number, number] | null;
+    length?: [number, number] | null; // po mainSizeNum
+    buckle?: [number, number] | null;
+    beltNo?: number | null;
+  };
 
-const [filters, setFilters] = useState<Filters>({
-  q: "",
-  price: null,
-  length: null,
-  buckle: null,
-  beltNo: null,
-});
-
+  const [filters, setFilters] = useState<Filters>({
+    q: "",
+    price: null,
+    length: null,
+    buckle: null,
+    beltNo: null,
+  });
 
   // persist + lang attr
   useEffect(() => {
@@ -903,6 +969,20 @@ const [filters, setFilters] = useState<Filters>({
     }
   }, [lang]);
 
+  // NEW: wykryj ?sent=1 i ustaw _next
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("sent") === "1") {
+        setShowThanks(true);
+        url.searchParams.delete("sent");
+        window.history.replaceState({}, "", url.toString());
+      }
+      url.searchParams.set("sent", "1");
+      setNextUrl(url.toString());
+    } catch {}
+  }, []);
+
   // Fetch + normalizacja
   useEffect(() => {
     let abort = false;
@@ -912,74 +992,73 @@ const [filters, setFilters] = useState<Filters>({
         const res = await fetch("/api/catalog", { cache: "no-store" });
         const json: CatalogResponse = await res.json();
 
-// 1) Odfiltrowanie kategorii "wood" (na wszelki wypadek po slug i po tytule w PL/EN)
-const srcCats = (json?.categories ?? []).filter(cat => {
-  const slug = cat.slug?.toLowerCase?.() ?? "";
-  const title = cat.title?.toLowerCase?.() ?? "";
-  return slug !== "wood" && title !== "wood" && title !== "drewno";
-});
+        // 1) Odfiltrowanie kategorii "wood" z tej strony (bo to „skóra”)
+        const srcCats = (json?.categories ?? []).filter((cat) => {
+          const slug = cat.slug?.toLowerCase?.() ?? "";
+          const title = cat.title?.toLowerCase?.() ?? "";
+          return slug !== "wood" && title !== "wood" && title !== "drewno";
+        });
 
-// 2) Dopiero teraz mapujemy do naszego kształtu
-const normalized: CategoryData[] = srcCats.map((cat) => {
+        // 2) mapowanie do naszego kształtu
+        const normalized: CategoryData[] = srcCats.map((cat) => {
+          const catImages = toImageObjects(
+            cat.images as (string | BeltImage)[]
+          );
 
-            const catImages = toImageObjects(
-              cat.images as (string | BeltImage)[]
-            );
+          const items: BeltItem[] = (cat.items ?? []).map((it) => {
+            const min = Number(it.rozmiarMin);
+            const max = Number(it.rozmiarMax);
+            const upper = isFinite(Math.max(min, max))
+              ? `${Math.max(min, max)} cm`
+              : "—";
+            const lower = isFinite(Math.min(min, max))
+              ? `${Math.min(min, max)} cm`
+              : "—";
+            const main =
+              it.rozmiarGlowny != null && it.rozmiarGlowny !== ""
+                ? `${it.rozmiarGlowny} cm`
+                : undefined;
+            const buckle =
+              it.rozSprz != null && it.rozSprz !== ""
+                ? `${Number(it.rozSprz)} cm`
+                : undefined;
 
-            const items: BeltItem[] = (cat.items ?? []).map((it) => {
-
-              
-              const min = Number(it.rozmiarMin);
-              const max = Number(it.rozmiarMax);
-              const upper = isFinite(Math.max(min, max))
-                ? `${Math.max(min, max)} cm`
-                : "—";
-              const lower = isFinite(Math.min(min, max))
-                ? `${Math.min(min, max)} cm`
-                : "—";
-              const main =
-                it.rozmiarGlowny != null && it.rozmiarGlowny !== ""
-                  ? `${it.rozmiarGlowny} cm`
-                  : undefined;
-              const buckle =
-                it.rozSprz != null && it.rozSprz !== ""
-                  ? `${Number(it.rozSprz)} cm`
-                  : undefined;
-
-              const imgs = sortImages(it.images || []);
-              if (imgs.length && !imgs.some((x) => x.isPrimary)) {
-                imgs[0].isPrimary = true;
-              }
-
-              return {
-                name: it.title,
-                nameEn: it.titleEn,
-                description: it.description,
-                descriptionEn: it.descriptionEn,
-                price: it.cenaPLN,
-                upperSize: upper,
-                lowerSize: lower,
-                mainSize: main,
-                buckleSize: buckle,
-                images: imgs,
-                beltNo: it.numerPaska,
-                // DODAJ do zwracanego obiektu BeltItem:
-upperSizeNum: isFinite(Math.max(min, max)) ? Math.max(min, max) : null,
-lowerSizeNum: isFinite(Math.min(min, max)) ? Math.min(min, max) : null,
-mainSizeNum: num(it.rozmiarGlowny),
-buckleSizeNum: num(it.rozSprz),
-priceNum: typeof it.cenaPLN === "number" ? it.cenaPLN : num(it.cenaPLN),
-
-              };
-            });
+            const imgs = sortImages(it.images || []);
+            if (imgs.length && !imgs.some((x) => x.isPrimary)) {
+              imgs[0].isPrimary = true;
+            }
 
             return {
-              title: cat.title,
-              images: catImages,
-              items,
+              name: it.title,
+              nameEn: it.titleEn,
+              description: it.description,
+              descriptionEn: it.descriptionEn,
+              price: it.cenaPLN,
+              upperSize: upper,
+              lowerSize: lower,
+              mainSize: main,
+              buckleSize: buckle,
+              images: imgs,
+              beltNo: it.numerPaska,
+              upperSizeNum: isFinite(Math.max(min, max))
+                ? Math.max(min, max)
+                : null,
+              lowerSizeNum: isFinite(Math.min(min, max))
+                ? Math.min(min, max)
+                : null,
+              mainSizeNum: num(it.rozmiarGlowny),
+              buckleSizeNum: num(it.rozSprz),
+              priceNum:
+                typeof it.cenaPLN === "number" ? it.cenaPLN : num(it.cenaPLN),
             };
-          }
-        );
+          });
+
+          return {
+            title: cat.title,
+            images: catImages,
+            items,
+          };
+        });
 
         if (!abort) setData(normalized);
       } catch {
@@ -1001,7 +1080,7 @@ priceNum: typeof it.cenaPLN === "number" ? it.cenaPLN : num(it.cenaPLN),
     return (c.items?.length || 0) > 0 && (anyWithImages || categoryImages);
   };
 
-    // === FILTROWANIE (globalnie, przed renderem) ===
+  // === FILTROWANIE ===
   const predicate = (it: BeltItem) => {
     const txt =
       (it.name ?? "") +
@@ -1013,12 +1092,20 @@ priceNum: typeof it.cenaPLN === "number" ? it.cenaPLN : num(it.cenaPLN),
       (it.descriptionEn ?? "");
 
     const qOk =
-      !filters.q ||
-      txt.toLowerCase().includes(filters.q.toLowerCase());
+      !filters.q || txt.toLowerCase().includes(filters.q.toLowerCase());
 
-    const priceOk = inNumRange(it.priceNum ?? null, filters.price ?? undefined);
-    const lengthOk = inNumRange(it.mainSizeNum ?? null, filters.length ?? undefined);
-    const buckleOk = inNumRange(it.buckleSizeNum ?? null, filters.buckle ?? undefined);
+    const priceOk = inNumRange(
+      it.priceNum ?? null,
+      filters.price ?? undefined
+    );
+    const lengthOk = inNumRange(
+      it.mainSizeNum ?? null,
+      filters.length ?? undefined
+    );
+    const buckleOk = inNumRange(
+      it.buckleSizeNum ?? null,
+      filters.buckle ?? undefined
+    );
     const beltNoOk =
       filters.beltNo == null ? true : it.beltNo === filters.beltNo;
 
@@ -1032,28 +1119,25 @@ priceNum: typeof it.cenaPLN === "number" ? it.cenaPLN : num(it.cenaPLN),
         items: (cat.items ?? []).filter(predicate),
       }));
 
-        const totalMatches =
+  const totalMatches =
     filteredData?.reduce((s, c) => s + (c.items?.length ?? 0), 0) ?? 0;
 
+  const allItems = (data ?? []).flatMap((c) => c.items ?? []);
 
-
-  const allItems = (data ?? []).flatMap(c => c.items ?? []);
-
-const bounds = {
-  price: clampRange([
-    Math.min(...allItems.map(i => i.priceNum ?? Infinity)),
-    Math.max(...allItems.map(i => i.priceNum ?? -Infinity)),
-  ] as [number, number]),
-  length: clampRange([
-    Math.min(...allItems.map(i => i.mainSizeNum ?? Infinity)),
-    Math.max(...allItems.map(i => i.mainSizeNum ?? -Infinity)),
-  ] as [number, number]),
-  buckle: clampRange([
-    Math.min(...allItems.map(i => i.buckleSizeNum ?? Infinity)),
-    Math.max(...allItems.map(i => i.buckleSizeNum ?? -Infinity)),
-  ] as [number, number]),
-};
-
+  const bounds = {
+    price: clampRange([
+      Math.min(...allItems.map((i) => i.priceNum ?? Infinity)),
+      Math.max(...allItems.map((i) => i.priceNum ?? -Infinity)),
+    ] as [number, number]),
+    length: clampRange([
+      Math.min(...allItems.map((i) => i.mainSizeNum ?? Infinity)),
+      Math.max(...allItems.map((i) => i.mainSizeNum ?? -Infinity)),
+    ] as [number, number]),
+    buckle: clampRange([
+      Math.min(...allItems.map((i) => i.buckleSizeNum ?? Infinity)),
+      Math.max(...allItems.map((i) => i.buckleSizeNum ?? -Infinity)),
+    ] as [number, number]),
+  };
 
   const navLink =
     "relative text-[12px] md:text-[13px] uppercase font-serif text-neutral-800 hover:text-neutral-950 transition " +
@@ -1079,34 +1163,31 @@ const bounds = {
             </div>
           )}
 
-{/* GLOBALNY PRZYCISK FILTRÓW — FIXED, WYRÓWNANY DO LEWEJ SEKCJI */}
-<div
-  className="
-    fixed left-0 right-0 z-40
-    top-[5.75rem] md:top-24
-    pointer-events-none
-  "
->
-  <div className="mx-auto max-w-6xl px-4">
-    <div className="flex justify-start">
-      <button
-        type="button"
-        onClick={() => setFiltersOpen(true)}
-        className="pointer-events-auto inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/80 backdrop-blur px-4 py-2 text-sm hover:bg-white shadow-sm"
-      >
-        {t.openFilters}
-      </button>
-    </div>
-  </div>
-</div>
-
-
-
+          {/* GLOBALNY PRZYCISK FILTRÓW */}
+          <div
+            className="
+              fixed left-0 right-0 z-40
+              top-[5.75rem] md:top-24
+              pointer-events-none
+            "
+          >
+            <div className="mx-auto max-w-6xl px-4">
+              <div className="flex justify-start">
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(true)}
+                  className="pointer-events-auto inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/80 px-4 py-2 text-sm hover:bg-white shadow-sm"
+                >
+                  {t.openFilters}
+                </button>
+              </div>
+            </div>
+          </div>
 
           {/* CATEGORIES FROM DB */}
-{!loading &&
-  filteredData &&
-  filteredData.filter(hasRenderable).map((cat, idx) => (
+          {!loading &&
+            filteredData &&
+            filteredData.filter(hasRenderable).map((cat, idx) => (
               <div key={`${cat.title}-${idx}`}>
                 <CategorySection
                   title={cat.title}
@@ -1120,11 +1201,12 @@ const bounds = {
             ))}
 
           {/* EMPTY STATE */}
-{!loading && (filteredData?.filter(hasRenderable).length ?? 0) === 0 && (
-  <div className="text-center text-sm text-neutral-600">
-    {t.empty}
-  </div>
-)}
+          {!loading &&
+            (filteredData?.filter(hasRenderable).length ?? 0) === 0 && (
+              <div className="text-center text-sm text-neutral-600">
+                {t.empty}
+              </div>
+            )}
 
           {/* O rzemiośle + formularz */}
           <div className="mt-4 md:mt-6 text-center">
@@ -1133,29 +1215,67 @@ const bounds = {
               <h3 className="font-serif text-lg md:text-xl tracking-wide">
                 {t.interestedHeading}
               </h3>
+
+
               <p className="mt-2 text-sm text-neutral-600 px-2">
                 {t.interestedText}
               </p>
 
+              {/* ✅ FormSubmit → wysyła na contact@craftsymphony.com i wraca z ?sent=1 */}
               <form
-                onSubmit={(e) => e.preventDefault()}
+                action="https://formsubmit.co/contact@craftsymphony.com"
+                method="POST"
                 className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
               >
+                {/* Opcje FormSubmit */}
+                <input type="hidden" name="_captcha" value="false" />
+                <input type="hidden" name="_template" value="table" />
+                <input type="hidden" name="_next" value={nextUrl} />
                 <input
+                  type="hidden"
+                  name="_subject"
+                  value={`${
+                    lang === "pl" ? "[SKÓRA]" : "[LEATHER]"
+                  } Nowe zapytanie ze strony`}
+                />
+                {/* materiał w treści maila */}
+                <input
+                  type="hidden"
+                  name="material"
+                  value={lang === "pl" ? "Skóra" : "Leather"}
+                />
+                {/* Honeypot (anty-spam) */}
+                <input
+                  type="text"
+                  name="_honey"
+                  className="hidden"
+                  tabIndex={-1}
+                  autoComplete="off"
+                />
+
+                <input
+                  name="email"
                   type="email"
                   required
                   placeholder={t.emailPlaceholder}
                   className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+                  aria-label={t.emailPlaceholder}
                 />
                 <input
+                  name="beltNo"
                   type="number"
                   min={1}
-                  max={9999}
+                  max={999999}
+                  required
                   placeholder={t.beltNoPlaceholder}
-                  className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
                   aria-label={t.beltNoPlaceholder}
+                  className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
                 />
-                <button className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-900 hover:text-white transition">
+
+                <button
+                  type="submit"
+                  className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition"
+                >
                   {t.submit}
                 </button>
               </form>
@@ -1212,181 +1332,258 @@ const bounds = {
         </section>
       </main>
 
-      {/* OVERLAY */}
-{isFiltersOpen && (
-  <motion.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    exit={{ opacity: 0 }}
-    onClick={() => setFiltersOpen(false)}
-    className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px]"
-    aria-hidden
-  />
-)}
+      {/* OVERLAY (filtry) */}
+      {isFiltersOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => setFiltersOpen(false)}
+          className="fixed inset-0 z-40 bg-black/40 "
+          aria-hidden
+        />
+      )}
 
-{/* SZUFLADA LEWA */}
-<motion.aside
-  initial={{ x: "-100%" }}
-  animate={{ x: isFiltersOpen ? 0 : "-100%" }}
-  transition={{ type: "spring", stiffness: 320, damping: 32 }}
-  className="fixed left-0 top-0 z-50 h-dvh w-[90vw] max-w-md bg-[#f7f7f2] shadow-2xl border-r border-neutral-200"
-  role="dialog"
-  aria-modal="true"
-  drag="x"
-  dragConstraints={{ left: 0, right: 0 }}
-  onDragEnd={(_, info) => {
-    if (info.offset.x < -80) setFiltersOpen(false);
-  }}
->
-  <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200">
-    <h2 className="text-sm font-medium uppercase tracking-wide">{t.filters}</h2>
-    <button
-      type="button"
-      onClick={() => setFiltersOpen(false)}
-      className="rounded-lg border border-neutral-300 px-3 py-1 text-sm hover:bg-white"
-    >
-      {t.close}
-    </button>
-  </div>
+      {/* SZUFLADA LEWA (filtry) */}
+      <motion.aside
+        initial={{ x: "-100%" }}
+        animate={{ x: isFiltersOpen ? 0 : "-100%" }}
+        transition={{ type: "spring", stiffness: 320, damping: 32 }}
+        className="fixed left-0 top-0 z-50 h-dvh w-[90vw] max-w-md bg-[#f7f7f2] shadow-2xl border-r border-neutral-200"
+        role="dialog"
+        aria-modal="true"
+        drag="x"
+        dragConstraints={{ left: 0, right: 0 }}
+        onDragEnd={(_, info) => {
+          if (info.offset.x < -80) setFiltersOpen(false);
+        }}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200">
+          <h2 className="text-sm font-medium uppercase tracking-wide">
+            {t.filters}
+          </h2>
+          <button
+            type="button"
+            onClick={() => setFiltersOpen(false)}
+            className="rounded-lg border border-neutral-300 px-3 py-1 text-sm hover:bg-white"
+          >
+            {t.close}
+          </button>
+        </div>
 
-  {/* FORMULARZ FILTRÓW */}
-  <div className="p-4 space-y-4 overflow-y-auto h-[calc(100dvh-56px)]">
-    {/* Szukaj */}
-    <div>
-      <label className="block text-xs uppercase tracking-wide text-neutral-600 mb-1 mt-8">
-        {t.search}
-      </label>
-      <input
-        value={filters.q}
-        onChange={e => setFilters(f => ({ ...f, q: e.target.value }))}
-        placeholder="np. brąz, klasyczny..."
-        className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10"
+        {/* FORMULARZ FILTRÓW */}
+        <div className="p-4 space-y-4 overflow-y-auto h-[calc(100dvh-56px)]">
+          {/* Szukaj */}
+          <div>
+            <label className="block text-xs uppercase tracking-wide text-neutral-600 mb-1 mt-8">
+              {t.search}
+            </label>
+            <input
+              value={filters.q}
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, q: e.target.value }))
+              }
+              placeholder="np. brąz, klasyczny..."
+              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10"
+            />
+          </div>
+
+          {/* Cena */}
+          <fieldset>
+            <legend className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
+              {t.priceRange}
+            </legend>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                placeholder={String(bounds.price?.[0] ?? "")}
+                value={filters.price?.[0] ?? ""}
+                onChange={(e) => {
+                  const v = num(e.target.value) ?? undefined;
+                  setFilters((f) => ({
+                    ...f,
+                    price:
+                      v != null || f.price?.[1] != null
+                        ? [
+                            v ?? (bounds.price?.[0] ?? 0),
+                            f.price?.[1] ?? (bounds.price?.[1] ?? 0),
+                          ]
+                        : null,
+                  }));
+                }}
+                className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+              />
+              <input
+                type="number"
+                placeholder={String(bounds.price?.[1] ?? "")}
+                value={filters.price?.[1] ?? ""}
+                onChange={(e) => {
+                  const v = num(e.target.value) ?? undefined;
+                  setFilters((f) => ({
+                    ...f,
+                    price:
+                      v != null || f.price?.[0] != null
+                        ? [
+                            f.price?.[0] ?? (bounds.price?.[0] ?? 0),
+                            v ?? (bounds.price?.[1] ?? 0),
+                          ]
+                        : null,
+                  }));
+                }}
+                className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+              />
+            </div>
+          </fieldset>
+
+          {/* Długość główna */}
+          <fieldset>
+            <legend className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
+              {t.lengthRange}
+            </legend>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                placeholder={String(bounds.length?.[0] ?? "")}
+                value={filters.length?.[0] ?? ""}
+                onChange={(e) => {
+                  const v = num(e.target.value) ?? undefined;
+                  setFilters((f) => ({
+                    ...f,
+                    length:
+                      v != null || f.length?.[1] != null
+                        ? [
+                            v ?? (bounds.length?.[0] ?? 0),
+                            f.length?.[1] ?? (bounds.length?.[1] ?? 0),
+                          ]
+                        : null,
+                  }));
+                }}
+                className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+              />
+              <input
+                type="number"
+                placeholder={String(bounds.length?.[1] ?? "")}
+                value={filters.length?.[1] ?? ""}
+                onChange={(e) => {
+                  const v = num(e.target.value) ?? undefined;
+                  setFilters((f) => ({
+                    ...f,
+                    length:
+                      v != null || f.length?.[0] != null
+                        ? [
+                            f.length?.[0] ?? (bounds.length?.[0] ?? 0),
+                            v ?? (bounds.length?.[1] ?? 0),
+                          ]
+                        : null,
+                  }));
+                }}
+                className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+              />
+            </div>
+          </fieldset>
+
+          {/* Szerokość klamry */}
+          <fieldset>
+            <legend className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
+              {t.buckleRange}
+            </legend>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                placeholder={String(bounds.buckle?.[0] ?? "")}
+                value={filters.buckle?.[0] ?? ""}
+                onChange={(e) => {
+                  const v = num(e.target.value) ?? undefined;
+                  setFilters((f) => ({
+                    ...f,
+                    buckle:
+                      v != null || f.buckle?.[1] != null
+                        ? [
+                            v ?? (bounds.buckle?.[0] ?? 0),
+                            f.buckle?.[1] ?? (bounds.buckle?.[1] ?? 0),
+                          ]
+                        : null,
+                  }));
+                }}
+                className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+              />
+              <input
+                type="number"
+                placeholder={String(bounds.buckle?.[1] ?? "")}
+                value={filters.buckle?.[1] ?? ""}
+                onChange={(e) => {
+                  const v = num(e.target.value) ?? undefined;
+                  setFilters((f) => ({
+                    ...f,
+                    buckle:
+                      v != null || f.buckle?.[0] != null
+                        ? [
+                            f.buckle?.[0] ?? (bounds.buckle?.[0] ?? 0),
+                            v ?? (bounds.buckle?.[1] ?? 0),
+                          ]
+                        : null,
+                  }));
+                }}
+                className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+              />
+            </div>
+          </fieldset>
+
+          {/* Numer paska */}
+          <div>
+            <label className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
+              {t.beltNo}
+            </label>
+            <input
+              type="number"
+              value={filters.beltNo ?? ""}
+              onChange={(e) =>
+                setFilters((f) => ({
+                  ...f,
+                  beltNo: e.target.value ? Number(e.target.value) : null,
+                }))
+              }
+              placeholder={t.any}
+              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+            />
+          </div>
+
+          {/* Akcje */}
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() =>
+                setFilters({
+                  q: "",
+                  price: null,
+                  length: null,
+                  buckle: null,
+                  beltNo: null,
+                })
+              }
+              className="flex-1 rounded-xl border border-neutral-300 px-4 py-2 text-sm hover:bg-white"
+            >
+              {t.clearAll}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltersOpen(false)}
+              className="flex-1 rounded-xl bg-neutral-900 text-white px-4 py-2 text-sm hover:opacity-90"
+            >
+              {t.apply}
+            </button>
+          </div>
+        </div>
+      </motion.aside>
+
+      {/* MODAL „Dziękujemy” */}
+      <Modal
+        open={showThanks}
+        onClose={() => setShowThanks(false)}
+        title={t.successTitle}
+        text={t.successText}
+        okLabel={t.ok}
       />
     </div>
-
-    {/* Cena */}
-    <fieldset>
-      <legend className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
-        {t.priceRange}
-      </legend>
-      <div className="grid grid-cols-2 gap-2">
-        <input
-          type="number"
-          placeholder={String(bounds.price?.[0] ?? "")}
-          value={filters.price?.[0] ?? ""}
-          onChange={e => {
-            const v = num(e.target.value) ?? undefined;
-            setFilters(f => ({ ...f, price: v != null || f.price?.[1] != null ? [v ?? (bounds.price?.[0] ?? 0), f.price?.[1] ?? (bounds.price?.[1] ?? 0)] : null }));
-          }}
-          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
-        />
-        <input
-          type="number"
-          placeholder={String(bounds.price?.[1] ?? "")}
-          value={filters.price?.[1] ?? ""}
-          onChange={e => {
-            const v = num(e.target.value) ?? undefined;
-            setFilters(f => ({ ...f, price: v != null || f.price?.[0] != null ? [f.price?.[0] ?? (bounds.price?.[0] ?? 0), v ?? (bounds.price?.[1] ?? 0)] : null }));
-          }}
-          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
-        />
-      </div>
-    </fieldset>
-
-    {/* Długość główna */}
-    <fieldset>
-      <legend className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
-        {t.lengthRange}
-      </legend>
-      <div className="grid grid-cols-2 gap-2">
-        <input
-          type="number"
-          placeholder={String(bounds.length?.[0] ?? "")}
-          value={filters.length?.[0] ?? ""}
-          onChange={e => {
-            const v = num(e.target.value) ?? undefined;
-            setFilters(f => ({ ...f, length: v != null || f.length?.[1] != null ? [v ?? (bounds.length?.[0] ?? 0), f.length?.[1] ?? (bounds.length?.[1] ?? 0)] : null }));
-          }}
-          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
-        />
-        <input
-          type="number"
-          placeholder={String(bounds.length?.[1] ?? "")}
-          value={filters.length?.[1] ?? ""}
-          onChange={e => {
-            const v = num(e.target.value) ?? undefined;
-            setFilters(f => ({ ...f, length: v != null || f.length?.[0] != null ? [f.length?.[0] ?? (bounds.length?.[0] ?? 0), v ?? (bounds.length?.[1] ?? 0)] : null }));
-          }}
-          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
-        />
-      </div>
-    </fieldset>
-
-    {/* Szerokość klamry */}
-    <fieldset>
-      <legend className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
-        {t.buckleRange}
-      </legend>
-      <div className="grid grid-cols-2 gap-2">
-        <input
-          type="number"
-          placeholder={String(bounds.buckle?.[0] ?? "")}
-          value={filters.buckle?.[0] ?? ""}
-          onChange={e => {
-            const v = num(e.target.value) ?? undefined;
-            setFilters(f => ({ ...f, buckle: v != null || f.buckle?.[1] != null ? [v ?? (bounds.buckle?.[0] ?? 0), f.buckle?.[1] ?? (bounds.buckle?.[1] ?? 0)] : null }));
-          }}
-          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
-        />
-        <input
-          type="number"
-          placeholder={String(bounds.buckle?.[1] ?? "")}
-          value={filters.buckle?.[1] ?? ""}
-          onChange={e => {
-            const v = num(e.target.value) ?? undefined;
-            setFilters(f => ({ ...f, buckle: v != null || f.buckle?.[0] != null ? [f.buckle?.[0] ?? (bounds.buckle?.[0] ?? 0), v ?? (bounds.buckle?.[1] ?? 0)] : null }));
-          }}
-          className="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
-        />
-      </div>
-    </fieldset>
-
-    {/* Numer paska */}
-    <div>
-      <label className="block text-xs uppercase tracking-wide text-neutral-600 mb-1">
-        {t.beltNo}
-      </label>
-      <input
-        type="number"
-        value={filters.beltNo ?? ""}
-        onChange={e => setFilters(f => ({ ...f, beltNo: e.target.value ? Number(e.target.value) : null }))}
-        placeholder={t.any}
-        className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
-      />
-    </div>
-
-    {/* Akcje */}
-    <div className="flex gap-2 pt-2">
-      <button
-        type="button"
-        onClick={() => setFilters({ q: "", price: null, length: null, buckle: null, beltNo: null })}
-        className="flex-1 rounded-xl border border-neutral-300 px-4 py-2 text-sm hover:bg-white"
-      >
-        {t.clearAll}
-      </button>
-      <button
-        type="button"
-        onClick={() => setFiltersOpen(false)}
-        className="flex-1 rounded-xl bg-neutral-900 text-white px-4 py-2 text-sm hover:opacity-90"
-      >
-        {t.apply}
-      </button>
-    </div>
-  </div>
-</motion.aside>
-
-    </div>
-
-    
   );
 }
