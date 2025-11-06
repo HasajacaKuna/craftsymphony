@@ -75,6 +75,9 @@ export async function POST(req: NextRequest) {
       </div>
     `;
 
+
+    await transporter.verify(); // rzuci czytelny błąd jeśli host/port/auth są złe
+
     await transporter.sendMail({
       from: process.env.INQUIRY_FROM || process.env.SMTP_USER!,
       to: process.env.INQUIRY_TO!,
