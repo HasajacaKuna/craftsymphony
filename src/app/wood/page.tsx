@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Facebook, Instagram, Youtube, Linkedin } from "lucide-react";
 import Navbar from "../components/Navbar";
 
@@ -48,8 +48,12 @@ type UIStrings = {
   productNoPh: string;
   send: string;
   about: string;
-};
 
+  /* NEW: modal */
+  successTitle: string;
+  successText: string;
+  ok: string;
+};
 
 type CatalogResponse = { categories: ApiCategory[] };
 
@@ -67,6 +71,12 @@ const UI: Record<Lang, UIStrings> = {
     send: "Wyślij zapytanie",
     about:
       "Każdy produkt z drewna powstaje w 100% ręcznie — od selekcji materiału, przez precyzyjną obróbkę i kształtowanie, aż po finalne szlifowanie i wykończenie powierzchni. Pracujemy z naturalnym surowcem, którego charakter i rysunek słojów czynią każdy egzemplarz unikatowym. Każdy detal tworzony jest z dbałością o estetykę, ergonomię oraz trwałość. Wierzymy w rzemiosło z duszą: w przedmioty, które dojrzewają z użytkowaniem, nabierają blasku i stają się częścią codziennych rytuałów. Naszym celem jest ponadczasowa forma zakorzeniona w tradycji, lecz wykonana z nowoczesną precyzją i szacunkiem do natury.",
+
+    /* NEW: modal */
+    successTitle: "Dziękujemy za wiadomość!",
+    successText:
+      "Odezwziemy się najszybciej jak to możliwe. Sprawdź skrzynkę pocztową wkrótce dostaniesz od nas odpowiedź.",
+    ok: "OK, super",
   },
   en: {
     navLeather: "Leather",
@@ -80,6 +90,12 @@ const UI: Record<Lang, UIStrings> = {
     send: "Send request",
     about:
       "Each wooden product is crafted entirely by hand—from the selection of raw material, through precise shaping and carving, to the final sanding and surface treatment. We work with natural wood whose grain, tone, and imperfections make every piece truly unique. Every detail is refined with attention to aesthetics, ergonomics, and long-lasting durability. We believe in soulful craftsmanship: in objects that age gracefully, develop character over time, and become part of daily rituals. Our aim is timeless design rooted in tradition, finished with modern precision and deep respect for nature.",
+
+    /* NEW: modal */
+    successTitle: "Thank you for your message!",
+    successText:
+      "We’ll get back to you as soon as possible. Please keep an eye on your inbox for our reply.",
+    ok: "Great",
   },
 };
 
@@ -119,17 +135,81 @@ function formatPriceForLang(price: string | number | undefined, lang: Lang) {
 type WoodCard = {
   id: string;
   image: string;
-  /** NEW: nazwa produktu */
   namePl: string;
   nameEn?: string;
-  /** NEW: numer produktu (jeśli brak w API, użyjemy id) */
   productNo?: number | string | null;
-
   descriptionPl: string;
   descriptionEn?: string;
   pricePLN: number | string;
   order?: number;
 };
+
+/* ===== Modal (accessibility-friendly) ===== */
+function Modal({
+  open,
+  onClose,
+  title,
+  text,
+  okLabel,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  text: string;
+  okLabel: string;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    if (open) {
+      document.addEventListener("keydown", onKey);
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.removeEventListener("keydown", onKey);
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="thanks-title"
+    >
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        onClick={onClose}
+      />
+      <div
+        ref={ref}
+        className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-neutral-200 p-6 text-center"
+      >
+        <h3 id="thanks-title" className="text-lg font-semibold text-neutral-900">
+          {title}
+        </h3>
+        <p className="mt-2 text-sm text-neutral-600 leading-relaxed">
+          {text}
+        </p>
+
+        <div className="mt-5 flex justify-center">
+          <button
+            onClick={onClose}
+            className="px-5 py-2 rounded-xl bg-neutral-900 text-white hover:bg-neutral-800 transition"
+            autoFocus
+          >
+            {okLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 
 /* ===== STRONA WOOD (GRID) ===== */
@@ -137,6 +217,10 @@ export default function WoodPage() {
   const [lang, setLang] = useState<Lang>("pl");
   const [items, setItems] = useState<WoodCard[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // modal
+  const [showThanks, setShowThanks] = useState(false);
+  const [nextUrl, setNextUrl] = useState<string>("");
 
   // język z localStorage jak u Ciebie
   useEffect(() => {
@@ -155,6 +239,20 @@ export default function WoodPage() {
 
   const t = UI[lang];
 
+  // Obsługa powrotu z FormSubmit (?sent=1) -> pokaż modal
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("sent") === "1") {
+        setShowThanks(true);
+        url.searchParams.delete("sent");
+        window.history.replaceState({}, "", url.toString());
+      }
+      url.searchParams.set("sent", "1");
+      setNextUrl(url.toString());
+    } catch {}
+  }, []);
+
   // fetch z /api/catalog -> tylko kategoria wood -> spłaszczenie itemów do grida
   useEffect(() => {
     (async () => {
@@ -169,38 +267,29 @@ export default function WoodPage() {
           return slug === "wood" || title === "wood";
         });
 
-        // Spłaszcz wszystkie itemy z kategorii wood
-const flat: WoodCard[] = woodCats.flatMap((cat, catIdx) => {
-  return (cat.items ?? []).map((it, itemIdx) => {
-    const primary = pickPrimary(it.images || []);
+        const flat: WoodCard[] = woodCats.flatMap((cat, catIdx) => {
+          return (cat.items ?? []).map((it, itemIdx) => {
+            const primary = pickPrimary(it.images || []);
+            const productNo = it.numerPaska ?? null;
+            const fallbackId = `${(cat.slug || "wood")}-${catIdx}-${itemIdx}`;
+            return {
+              id: String(productNo ?? fallbackId),
+              image: primary?.url || "",
+              namePl:
+                (it.title || "").trim() ||
+                `Produkt ${productNo ?? itemIdx + 1}`,
+              nameEn: (it.titleEn || "").trim() || undefined,
+              productNo,
+              descriptionPl: it.description,
+              descriptionEn: it.descriptionEn,
+              pricePLN: it.cenaPLN,
+              order: primary?.order ?? itemIdx,
+            };
+          });
+        });
 
-    const productNo = it.numerPaska ?? null;
-    const fallbackId = `${(cat.slug || "wood")}-${catIdx}-${itemIdx}`;
-
-    return {
-      id: String(productNo ?? fallbackId),
-      image: primary?.url || "",
-
-      // NEW: nazwa + numer
-      namePl: (it.title || "").trim() || `Produkt ${productNo ?? itemIdx + 1}`,
-      nameEn: (it.titleEn || "").trim() || undefined,
-      productNo,
-
-      descriptionPl: it.description,
-      descriptionEn: it.descriptionEn,
-      pricePLN: it.cenaPLN,
-      order: primary?.order ?? itemIdx,
-    };
-  });
-});
-
-
-        // Usuń pozycje bez obrazka (grid potrzebuje obrazów)
         const withImages = flat.filter((x) => !!x.image);
-
-        // Posortuj po order
         withImages.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
         setItems(withImages);
       } catch {
         setItems([]);
@@ -227,52 +316,49 @@ const flat: WoodCard[] = woodCats.flatMap((cat, catIdx) => {
     }
     return (
       <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-     {items.map((it) => (
-  <article
-    key={it.id}
-    className="flex h-full flex-col rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm "
-  >
-    <div className="relative w-full aspect-square bg-neutral-100">
-      <Image
-        src={it.image}
-        alt={lang === "pl" ? "Produkt drewniany" : "Wood product"}
-        fill
-        sizes="(max-width:640px) 100vw, (max-width:1024px) 50vw, 25vw"
-        className="object-cover object-center"
-      />
-    </div>
+        {items.map((it) => (
+          <article
+            key={it.id}
+            className="flex h-full flex-col rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm "
+          >
+            <div className="relative w-full aspect-square bg-neutral-100">
+              <Image
+                src={it.image}
+                alt={lang === "pl" ? "Produkt drewniany" : "Wood product"}
+                fill
+                sizes="(max-width:640px) 100vw, (max-width:1024px) 50vw, 25vw"
+                className="object-cover object-center"
+              />
+            </div>
 
-    <div className="p-4 flex grow flex-col">
-      {/* Nazwa (2 linie) */}
-      <h3 className="text-base font-medium text-neutral-900 leading-snug line-clamp-2 min-h-[2.75rem]">
-        {lang === "pl" ? it.namePl : it.nameEn || it.namePl}
-      </h3>
+            <div className="p-4 flex grow flex-col">
+              <h3 className="text-base font-medium text-neutral-900 leading-snug line-clamp-2 min-h-[2.75rem]">
+                {lang === "pl" ? it.namePl : it.nameEn || it.namePl}
+              </h3>
 
-      {/* Numer */}
-      <div className="mt-0.5 text-xs text-neutral-500">
-        {lang === "pl" ? "Nr:" : "No."}{" "}
-        <span className="tabular-nums">{it.productNo ?? it.id}</span>
-      </div>
+              <div className="mt-0.5 text-xs text-neutral-500">
+                {lang === "pl" ? "Nr:" : "No."}{" "}
+                <span className="tabular-nums">{it.productNo ?? it.id}</span>
+              </div>
 
-      {/* Opis (3 linie) */}
-      <p className="mt-2 text-sm text-neutral-600 line-clamp-3 min-h-[3.75rem]">
-        {lang === "pl" ? it.descriptionPl : it.descriptionEn || it.descriptionPl}
-      </p>
+              <p className="mt-2 text-sm text-neutral-600 line-clamp-3 min-h-[3.75rem]">
+                {lang === "pl"
+                  ? it.descriptionPl
+                  : it.descriptionEn || it.descriptionPl}
+              </p>
 
-      {/* Cena przyklejona do dołu */}
-      <div className="mt-auto pt-4 text-sm">
-        <span className="text-neutral-500">{t.price}&nbsp;</span>
-        <span className="font-medium">
-          {formatPriceForLang(it.pricePLN, lang)}
-        </span>
-      </div>
-    </div>
-  </article>
-))}
-
+              <div className="mt-auto pt-4 text-sm">
+                <span className="text-neutral-500">{t.price}&nbsp;</span>
+                <span className="font-medium">
+                  {formatPriceForLang(it.pricePLN, lang)}
+                </span>
+              </div>
+            </div>
+          </article>
+        ))}
       </div>
     );
-  }, [items, loading, lang]);
+  }, [items, loading, lang, t.price]);
 
   return (
     <div className="min-h-screen bg-[#f5f5ef] text-neutral-900 selection:bg-neutral-900 selection:text-white">
@@ -289,63 +375,80 @@ const flat: WoodCard[] = woodCats.flatMap((cat, catIdx) => {
           {content}
 
           {/* Formularz zainteresowania */}
-          <div className="mt-14 md:mt-16 text-center">
-            <h3 className="font-serif text-lg md:text-xl tracking-wide">
-              {t.interestedHeading}
-            </h3>
-            <p className="mt-2 text-sm text-neutral-600 px-2">
-              {t.interestedText}
-            </p>
+         {/* Formularz zainteresowania */}
+<div className="mt-14 md:mt-16 text-center">
+  <h3 className="font-serif text-lg md:text-xl tracking-wide">
+    {t.interestedHeading}
+  </h3>
 
-<form
-  onSubmit={async (e) => {
-    e.preventDefault();
-    const form = e.currentTarget as HTMLFormElement;
-    const fd = new FormData(form);
 
-    const res = await fetch("/api/inquiry", {
-      method: "POST",
-      body: fd, // API obsługuje FormData
-    });
+  <p className="mt-2 text-sm text-neutral-600 px-2">
+    {t.interestedText}
+  </p>
 
-    if (res.ok) {
-      alert(lang === "pl" ? "Wysłano zapytanie. Dziękujemy!" : "Request sent. Thank you!");
-      form.reset();
-    } else {
-      alert(lang === "pl" ? "Błąd wysyłki — spróbuj ponownie." : "Send error — try again.");
-    }
-  }}
-  className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
->
-  <input
-    name="email"
-    type="email"
-    required
-    placeholder={t.emailPh}
-    className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-    aria-label={t.emailPh}
-  />
-  <input
-    name="productNo"
-    type="text"
-    inputMode="numeric"
-    pattern="[0-9]{1,6}"
-    required
-    placeholder={t.productNoPh}
-    aria-label={t.productNoPh}
-    className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-  />
-  {/* honeypot (anty-spam) */}
-  <input type="text" name="company" className="hidden" tabIndex={-1} autoComplete="off" />
-  <button
-    type="submit"
-    className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition disabled:opacity-50"
+  {/* ✅ FormSubmit → wysyła na contact@craftsymphony.com i wraca z ?sent=1 */}
+  <form
+    action="https://formsubmit.co/contact@craftsymphony.com"
+    method="POST"
+    className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
   >
-    {t.send}
-  </button>
-</form>
+    {/* Opcje FormSubmit */}
+    <input type="hidden" name="_captcha" value="false" />
+    <input type="hidden" name="_template" value="table" />
+    <input type="hidden" name="_next" value={nextUrl} />
+    {/* Dodajemy materiał do tematu, np. [DREWNO] / [WOOD] */}
+    <input
+      type="hidden"
+      name="_subject"
+      value={`${lang === "pl" ? "[DREWNO]" : "[WOOD]"} Nowe zapytanie produktowe ze strony`}
+    />
 
-          </div>
+    {/* 🔹 NOWE: materiał jako pole w treści maila */}
+    <input
+      type="hidden"
+      name="material"
+      value={lang === "pl" ? "Drewno" : "Wood"}
+    />
+
+    {/* Honeypot (anty-spam) */}
+    <input
+      type="text"
+      name="_honey"
+      className="hidden"
+      tabIndex={-1}
+      autoComplete="off"
+    />
+
+    {/* pola użytkownika */}
+    <input
+      name="email"
+      type="email"
+      required
+      placeholder={t.emailPh}
+      className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+      aria-label={t.emailPh}
+    />
+    <input
+      name="productNo"
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]{1,6}"
+      required
+      placeholder={t.productNoPh}
+      aria-label={t.productNoPh}
+      className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+    />
+
+    <button
+      type="submit"
+      className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition disabled:opacity-50"
+    >
+      {t.send}
+    </button>
+  </form>
+
+</div>
+
 
           {/* Obraz + opis na dole */}
           <div className="mt-10 md:mt-12 text-center mb-14">
@@ -397,6 +500,15 @@ const flat: WoodCard[] = woodCats.flatMap((cat, catIdx) => {
           </div>
         </section>
       </main>
+
+      {/* MODAL */}
+      <Modal
+        open={showThanks}
+        onClose={() => setShowThanks(false)}
+        title={t.successTitle}
+        text={t.successText}
+        okLabel={t.ok}
+      />
     </div>
   );
 }
