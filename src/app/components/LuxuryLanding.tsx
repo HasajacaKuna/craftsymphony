@@ -213,6 +213,7 @@ function num(v: unknown): number | null {
   return isFinite(n) ? n : null;
 }
 
+
 function clampRange([min, max]: [number, number]): [number, number] {
   return [Math.min(min, max), Math.max(min, max)];
 }
@@ -290,6 +291,8 @@ function CategorySection({
     }, []);
     return isDesktop;
   };
+
+
 
   const isDesktop = useIsDesktop();
   const [aspect, setAspect] = useState(1); // naturalWidth / naturalHeight
@@ -916,12 +919,50 @@ export default function LuxuryLanding({
 
   const [data, setData] = useState<CategoryData[] | null>(null);
   const [loading, setLoading] = useState(true);
-
   const [isFiltersOpen, setFiltersOpen] = useState(false);
 
   // NEW: modal + powrót z FormSubmit
   const [showThanks, setShowThanks] = useState(false);
   const [nextUrl, setNextUrl] = useState<string>("");
+
+  // 🔹 TU – licznik odwiedzin
+  const [visitCount, setVisitCount] = useState<number | null>(null);
+
+useEffect(() => {
+  (async () => {
+    try {
+      console.log("FETCH /api/visits...");
+      const res = await fetch("/api/visits");
+      console.log("RES STATUS", res.status);
+      if (!res.ok) return;
+      const json = await res.json();
+      console.log("VISITS JSON", json);
+      setVisitCount(json.count ?? null);
+    } catch (err) {
+      console.error("VISITS ERROR", err);
+      setVisitCount(null);
+    }
+  })();
+}, []);
+
+
+    /* === NOWE: "start" filmiku + pojawienie się katalogu po 3s === */
+  const [videoStarted, setVideoStarted] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
+
+  // Symulujemy auto-start filmiku od razu po załadowaniu strony
+  useEffect(() => {
+    setVideoStarted(true);
+  }, []);
+
+  // 3 sekundy po starcie filmiku pokazujemy katalog
+  useEffect(() => {
+    if (!videoStarted) return;
+    const id = window.setTimeout(() => {
+      setShowCatalog(true);
+    }, 2000);
+    return () => window.clearTimeout(id);
+  }, [videoStarted]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1153,182 +1194,227 @@ export default function LuxuryLanding({
         labels={{ navLeather: t.navLeather, navWood: t.navWood }}
       />
 
-      {/* MAIN */}
-      <main className="pt-[5.75rem] md:pt-24 pb-24">
-        <section className="mx-auto max-w-6xl px-4 space-y-16 md:space-y-24">
-          {/* LOADING */}
-          {loading && (
-            <div className="text-center text-sm text-neutral-600">
-              {t.loading}
-            </div>
+<main className="pt-[5.75rem] md:pt-24 pb-24">
+  <section className="mx-auto max-w-6xl px-4 space-y-16 md:space-y-24">
+    {/* === HERO – placeholder pod FILMIK 9:16 (mobile) / 16:9 (desktop) === */}
+    <div className="w-full flex justify-center">
+      <div className="relative w-full max-w-[420px] md:max-w-[1100px]">
+        <div
+          className="
+            relative
+            w-full
+            aspect-[9/16] md:aspect-[16/9]
+            bg-black
+            text-white
+            flex
+            items-center
+            justify-center
+            rounded-3xl
+            shadow-2xl
+            border border-neutral-800
+            px-6
+            mt-2 md:mt-20
+          "
+        >
+          <span className="text-xl md:text-3xl tracking-[0.2em] uppercase">
+            FILMIK
+          </span>
+        </div>
+      </div>
+    </div>
+
+
+          {/* RESZTA STRONY – pokazuje się dopiero po 3s od startu filmiku */}
+          {showCatalog && (
+            <>
+              {/* LOADING */}
+              {loading && (
+                <div className="text-center text-sm text-neutral-600">
+                  {t.loading}
+                </div>
+              )}
+
+{/* GLOBALNY PRZYCISK FILTRÓW – FIXED */}
+<div
+  className="
+    fixed inset-x-0 z-40
+    top-[20px]
+    pointer-events-none
+  "
+>
+  <div className="mx-auto max-w-6xl px-4">
+    <div className="flex justify-start">
+      <button
+        type="button"
+        onClick={() => setFiltersOpen(true)}
+        className="pointer-events-auto inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/80 px-4 py-2 text-sm hover:bg-white shadow-sm"
+      >
+        {t.openFilters}
+      </button>
+    </div>
+  </div>
+</div>
+
+
+              {/* CATEGORIES FROM DB */}
+              {!loading &&
+                filteredData &&
+                filteredData.filter(hasRenderable).map((cat, idx) => (
+                  <div key={`${cat.title}-${idx}`}>
+                    <CategorySection
+                      title={cat.title}
+                      images={cat.images}
+                      items={cat.items}
+                      labels={t}
+                      lang={lang}
+                    />
+                    <div className="mx-auto w-[100%] h-px bg-neutral-300" />
+                  </div>
+                ))}
+
+              {/* EMPTY STATE */}
+              {!loading &&
+                (filteredData?.filter(hasRenderable).length ?? 0) === 0 && (
+                  <div className="text-center text-sm text-neutral-600">
+                    {t.empty}
+                  </div>
+                )}
+
+              {/* O rzemiośle + formularz */}
+              <div className="mt-4 md:mt-6 text-center">
+                {/* Formularz */}
+                <div className="mt-12 md:mt-16 text-center">
+                  <h3 className="font-serif text-lg md:text-xl tracking-wide">
+                    {t.interestedHeading}
+                  </h3>
+
+                  <p className="mt-2 text-sm text-neutral-600 px-2">
+                    {t.interestedText}
+                  </p>
+
+                  {/* ✅ FormSubmit → wysyła na contact@craftsymphony.com i wraca z ?sent=1 */}
+                  <form
+                    action="https://formsubmit.co/contact@craftsymphony.com"
+                    method="POST"
+                    className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
+                  >
+                    {/* Opcje FormSubmit */}
+                    <input type="hidden" name="_captcha" value="false" />
+                    <input type="hidden" name="_template" value="table" />
+                    <input type="hidden" name="_next" value={nextUrl} />
+                    <input
+                      type="hidden"
+                      name="_subject"
+                      value={`${
+                        lang === "pl" ? "[SKÓRA]" : "[LEATHER]"
+                      } Nowe zapytanie ze strony`}
+                    />
+                    {/* materiał w treści maila */}
+                    <input
+                      type="hidden"
+                      name="material"
+                      value={lang === "pl" ? "Skóra" : "Leather"}
+                    />
+                    {/* Honeypot (anty-spam) */}
+                    <input
+                      type="text"
+                      name="_honey"
+                      className="hidden"
+                      tabIndex={-1}
+                      autoComplete="off"
+                    />
+
+                    <input
+                      name="email"
+                      type="email"
+                      required
+                      placeholder={t.emailPlaceholder}
+                      className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+                      aria-label={t.emailPlaceholder}
+                    />
+                    <input
+                      name="beltNo"
+                      type="number"
+                      min={1}
+                      max={999999}
+                      required
+                      placeholder={t.beltNoPlaceholder}
+                      aria-label={t.beltNoPlaceholder}
+                      className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+                    />
+
+                    <button
+                      type="submit"
+                      className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition"
+                    >
+                      {t.submit}
+                    </button>
+                  </form>
+                </div>
+
+                {/* Obraz o rzemiośle */}
+                <div className="relative mx-auto h-64 md:h-[31rem] w-full max-w-3xl">
+                  <Image
+                    src={aboutImage}
+                    alt="Craft"
+                    fill
+                    sizes="(max-width:768px) 90vw, 60vw"
+                    className="object-contain"
+                  />
+                </div>
+
+                <p className="mt-4 md:mt-[-6] max-w-3xl mx-auto text-sm leading-relaxed text-neutral-700 px-2 italic">
+                  {t.about}
+                </p>
+              </div>
+
+              {/* Stopka */}
+{/* Stopka */}
+<div className="space-y-2">
+  <div className="mx-auto w-full h-px bg-neutral-300" />
+
+  <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-6 text-sm px-2">
+    <div className="md:justify-self-start text-center md:text-left text-neutral-700">
+      <div className="font-medium">contact@craftsymphony.com</div>
+      <div className="mt-1">+48 692 296 979</div>
+    </div>
+
+    <div className="text-center text-xs text-neutral-500" />
+
+    <div className="md:justify-self-end flex items-center justify-center md:justify-end gap-5 text-neutral-700">
+      <Link href="#" aria-label="Facebook" className="hover:opacity-80">
+        <Facebook />
+      </Link>
+      <Link href="#" aria-label="Instagram" className="hover:opacity-80">
+        <Instagram />
+      </Link>
+      <Link href="#" aria-label="YouTube" className="hover:opacity-80">
+        <Youtube />
+      </Link>
+      <Link href="#" aria-label="LinkedIn" className="hover:opacity-80">
+        <Linkedin />
+      </Link>
+    </div>
+  </div>
+
+{/* Licznik odwiedzin – POD socialami */}
+<div className="text-center text-[11px] text-neutral-500 px-2">
+  Visits:{" "}
+  <span className="tabular-nums">
+    {visitCount !== null ? visitCount : "—"}
+  </span>
+</div>
+
+
+  <div className="text-center text-xs text-neutral-500">
+    © 2025 Craft Symphony
+  </div>
+</div>
+
+
+
+            </>
           )}
-
-          {/* GLOBALNY PRZYCISK FILTRÓW */}
-          <div
-            className="
-              fixed left-0 right-0 z-40
-              top-[5.75rem] md:top-24
-              pointer-events-none
-            "
-          >
-            <div className="mx-auto max-w-6xl px-4">
-              <div className="flex justify-start">
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen(true)}
-                  className="pointer-events-auto inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/80 px-4 py-2 text-sm hover:bg-white shadow-sm"
-                >
-                  {t.openFilters}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* CATEGORIES FROM DB */}
-          {!loading &&
-            filteredData &&
-            filteredData.filter(hasRenderable).map((cat, idx) => (
-              <div key={`${cat.title}-${idx}`}>
-                <CategorySection
-                  title={cat.title}
-                  images={cat.images}
-                  items={cat.items}
-                  labels={t}
-                  lang={lang}
-                />
-                <div className="mx-auto w-[100%] h-px bg-neutral-300" />
-              </div>
-            ))}
-
-          {/* EMPTY STATE */}
-          {!loading &&
-            (filteredData?.filter(hasRenderable).length ?? 0) === 0 && (
-              <div className="text-center text-sm text-neutral-600">
-                {t.empty}
-              </div>
-            )}
-
-          {/* O rzemiośle + formularz */}
-          <div className="mt-4 md:mt-6 text-center">
-            {/* Formularz */}
-            <div className="mt-12 md:mt-16 text-center">
-              <h3 className="font-serif text-lg md:text-xl tracking-wide">
-                {t.interestedHeading}
-              </h3>
-
-
-              <p className="mt-2 text-sm text-neutral-600 px-2">
-                {t.interestedText}
-              </p>
-
-              {/* ✅ FormSubmit → wysyła na contact@craftsymphony.com i wraca z ?sent=1 */}
-              <form
-                action="https://formsubmit.co/contact@craftsymphony.com"
-                method="POST"
-                className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
-              >
-                {/* Opcje FormSubmit */}
-                <input type="hidden" name="_captcha" value="false" />
-                <input type="hidden" name="_template" value="table" />
-                <input type="hidden" name="_next" value={nextUrl} />
-                <input
-                  type="hidden"
-                  name="_subject"
-                  value={`${
-                    lang === "pl" ? "[SKÓRA]" : "[LEATHER]"
-                  } Nowe zapytanie ze strony`}
-                />
-                {/* materiał w treści maila */}
-                <input
-                  type="hidden"
-                  name="material"
-                  value={lang === "pl" ? "Skóra" : "Leather"}
-                />
-                {/* Honeypot (anty-spam) */}
-                <input
-                  type="text"
-                  name="_honey"
-                  className="hidden"
-                  tabIndex={-1}
-                  autoComplete="off"
-                />
-
-                <input
-                  name="email"
-                  type="email"
-                  required
-                  placeholder={t.emailPlaceholder}
-                  className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-                  aria-label={t.emailPlaceholder}
-                />
-                <input
-                  name="beltNo"
-                  type="number"
-                  min={1}
-                  max={999999}
-                  required
-                  placeholder={t.beltNoPlaceholder}
-                  aria-label={t.beltNoPlaceholder}
-                  className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-                />
-
-                <button
-                  type="submit"
-                  className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition"
-                >
-                  {t.submit}
-                </button>
-              </form>
-            </div>
-
-            {/* Obraz o rzemiośle */}
-            <div className="relative mx-auto h-64 md:h-[31rem] w-full max-w-3xl">
-              <Image
-                src={aboutImage}
-                alt="Craft"
-                fill
-                sizes="(max-width:768px) 90vw, 60vw"
-                className="object-contain"
-              />
-            </div>
-
-            <p className="mt-4 md:mt-[-6] max-w-3xl mx-auto text-sm leading-relaxed text-neutral-700 px-2 italic">
-              {t.about}
-            </p>
-          </div>
-
-          {/* Stopka */}
-          <div className="space-y-2">
-            <div className="mx-auto w-full h-px bg-neutral-300" />
-
-            <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-6 text-sm px-2">
-              <div className="md:justify-self-start text-center md:text-left text-neutral-700">
-                <div className="font-medium">kontakt@craftsymphony.pl</div>
-                <div className="mt-1">+48 692 296 979</div>
-              </div>
-
-              <div className="text-center text-xs text-neutral-500" />
-
-              <div className="md:justify-self-end flex items-center justify-center md:justify-end gap-5 text-neutral-700">
-                <Link href="#" aria-label="Facebook" className="hover:opacity-80">
-                  <Facebook />
-                </Link>
-                <Link href="#" aria-label="Instagram" className="hover:opacity-80">
-                  <Instagram />
-                </Link>
-                <Link href="#" aria-label="YouTube" className="hover:opacity-80">
-                  <Youtube />
-                </Link>
-                <Link href="#" aria-label="LinkedIn" className="hover:opacity-80">
-                  <Linkedin />
-                </Link>
-              </div>
-            </div>
-
-            <div className="text-center text-xs text-neutral-500">
-              © 2025 Craft Symphony
-            </div>
-          </div>
         </section>
       </main>
 
