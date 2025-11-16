@@ -10,16 +10,18 @@ export const metadata: Metadata = {
   title: "Craft Symphony",
   description: "Professional, elegant belt showcase",
   icons: {
+    // GŁÓWNA favicona – upewnij się, że plik istnieje w /public
     icon: [
+      { url: "/favicon.ico", type: "image/x-icon" },
       { url: "/favicon-96x96.png", sizes: "96x96", type: "image/png" },
-      { url: "/favicon.svg", type: "image/svg+xml" },
     ],
-    shortcut: ["/favicon.ico"],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+    shortcut: ["/favicon.ico"],
   },
   manifest: "/site.webmanifest",
   themeColor: "#ffffff",
 };
+
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
