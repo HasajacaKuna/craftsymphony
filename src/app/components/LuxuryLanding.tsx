@@ -8,6 +8,7 @@ import {
   Instagram,
   Youtube,
   Linkedin,
+    SlidersHorizontal,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -1196,47 +1197,56 @@ useEffect(() => {
 
 <main className="pt-[5.75rem] md:pt-24 pb-24">
   <section className="mx-auto max-w-6xl px-4 space-y-16 md:space-y-24">
-    {/* === HERO – placeholder pod FILMIK 9:16 (mobile) / 16:9 (desktop) === */}
-{/* === HERO – różne wideo na mobile i desktop === */}
+{/* === HERO – mobile pionowy, desktop poziomy 16:9 === */}
 <div className="w-full flex justify-center">
-  <div className="relative w-full max-w-[420px] md:max-w-[1100px]">
-    <div
-      className="
-        relative
-        w-full
-        aspect-[9/16] md:aspect-[16/9]
-        rounded-3xl
-        shadow-2xl
-        border border-neutral-800
-        overflow-hidden
-        mt-2 md:mt-20
-        bg-black
-      "
-    >
-      {/* MOBILE VIDEO (9:16) */}
-      <video
-        className="block md:hidden h-full w-full object-cover"
-        src="/videos/leather-mobile.mp4"
-        autoPlay
-        muted
-        loop
-        playsInline
-        onPlay={() => setVideoStarted(true)}  // opcjonalne – jeśli chcesz żeby katalog odpalał się po starcie filmu
-      />
+  <div className="relative w-full md:px-4">
+    {/* Zewnętrzny wrapper nadaje wysokość sekcji na desktopie */}
+    <div className="relative h-auto md:h-[calc(90vh-7rem)] mt-2 md:mt-6 flex items-center justify-center">
+      {/* Wnętrze – tutaj trzymamy proporcje: 9:16 mobile, 16:9 desktop */}
+      <div
+        className="
+          relative
+          w-full
+          max-w-[1100px]
+          aspect-[9/16] md:aspect-[16/9]
+          rounded-3xl
+          shadow-2xl
+          overflow-hidden
+          bg-black
+        "
+      >
+        {/* MOBILE VIDEO (9:16) */}
+        <video
+          className="block md:hidden h-full w-full object-cover"
+          src="/videos/leather-mobile.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
+          onPlay={() => setVideoStarted(true)}
+        />
 
-      {/* DESKTOP VIDEO (16:9) */}
-      <video
-        className="hidden md:block h-full w-full object-cover"
-        src="/videos/leather-desktop.mp4"
-        autoPlay
-        muted
-        loop
-        playsInline
-        onPlay={() => setVideoStarted(true)}
-      />
+{/* DESKTOP VIDEO (16:9) – szerokie, poziome */}
+<video
+  className="
+    hidden md:block
+    h-full w-full
+    object-cover
+    object-[50%_12%]   /* środek w poziomie, lekko w górę w pionie */
+  "
+  src="/videos/leather-desktop.mp4"
+  autoPlay
+  muted
+  loop
+  playsInline
+  onPlay={() => setVideoStarted(true)}
+/>
+
+      </div>
     </div>
   </div>
 </div>
+
 
 
 
@@ -1250,25 +1260,42 @@ useEffect(() => {
                 </div>
               )}
 
-{/* GLOBALNY PRZYCISK FILTRÓW – FIXED */}
+{/* GLOBALNY PRZYCISK FILTRÓW – mobile dół, desktop lewy-góra */}
 <div
   className="
-    fixed inset-x-0 z-40
-    top-[20px]
+    fixed
+    z-40
     pointer-events-none
+
+    bottom-4 left-1/2 -translate-x-1/2   /* MOBILE: dół, na środku */
+    md:bottom-auto md:left-3 md:top-[20px] md:translate-x-0  /* DESKTOP: lewy-góra */
   "
 >
-  <div className="mx-auto max-w-6xl px-4">
-    <div className="flex justify-start">
-      <button
-        type="button"
-        onClick={() => setFiltersOpen(true)}
-        className="pointer-events-auto inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white/80 px-4 py-2 text-sm hover:bg-white shadow-sm"
-      >
-        {t.openFilters}
-      </button>
-    </div>
-  </div>
+  <button
+    type="button"
+    onClick={() => setFiltersOpen(true)}
+    className="
+      pointer-events-auto
+      inline-flex items-center gap-2
+
+      rounded-full
+      border border-neutral-900/80
+      bg-neutral-900/90
+      text-[#f5f5ef]
+      px-5 py-2.5 text-xs md:text-sm
+      shadow-lg shadow-black/20
+      backdrop-blur-sm
+
+      hover:bg-neutral-900
+      active:scale-[0.97]
+      transition
+    "
+  >
+    <SlidersHorizontal className="h-4 w-4" />
+    <span className="tracking-wide uppercase">
+      {t.openFilters}
+    </span>
+  </button>
 </div>
 
 
