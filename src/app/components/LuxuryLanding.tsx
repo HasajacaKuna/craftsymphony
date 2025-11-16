@@ -1197,31 +1197,47 @@ useEffect(() => {
 <main className="pt-[5.75rem] md:pt-24 pb-24">
   <section className="mx-auto max-w-6xl px-4 space-y-16 md:space-y-24">
     {/* === HERO – placeholder pod FILMIK 9:16 (mobile) / 16:9 (desktop) === */}
-    <div className="w-full flex justify-center">
-      <div className="relative w-full max-w-[420px] md:max-w-[1100px]">
-        <div
-          className="
-            relative
-            w-full
-            aspect-[9/16] md:aspect-[16/9]
-            bg-black
-            text-white
-            flex
-            items-center
-            justify-center
-            rounded-3xl
-            shadow-2xl
-            border border-neutral-800
-            px-6
-            mt-2 md:mt-20
-          "
-        >
-          <span className="text-xl md:text-3xl tracking-[0.2em] uppercase">
-            FILMIK
-          </span>
-        </div>
-      </div>
+{/* === HERO – różne wideo na mobile i desktop === */}
+<div className="w-full flex justify-center">
+  <div className="relative w-full max-w-[420px] md:max-w-[1100px]">
+    <div
+      className="
+        relative
+        w-full
+        aspect-[9/16] md:aspect-[16/9]
+        rounded-3xl
+        shadow-2xl
+        border border-neutral-800
+        overflow-hidden
+        mt-2 md:mt-20
+        bg-black
+      "
+    >
+      {/* MOBILE VIDEO (9:16) */}
+      <video
+        className="block md:hidden h-full w-full object-cover"
+        src="/videos/leather-mobile.mp4"
+        autoPlay
+        muted
+        loop
+        playsInline
+        onPlay={() => setVideoStarted(true)}  // opcjonalne – jeśli chcesz żeby katalog odpalał się po starcie filmu
+      />
+
+      {/* DESKTOP VIDEO (16:9) */}
+      <video
+        className="hidden md:block h-full w-full object-cover"
+        src="/videos/leather-desktop.mp4"
+        autoPlay
+        muted
+        loop
+        playsInline
+        onPlay={() => setVideoStarted(true)}
+      />
     </div>
+  </div>
+</div>
+
 
 
           {/* RESZTA STRONY – pokazuje się dopiero po 3s od startu filmiku */}
