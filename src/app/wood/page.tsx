@@ -320,6 +320,15 @@ function CategorySection({
 
   if (!items.length || !gallery.length) return null;
 
+  // tuż przed `return ( ... )` w CategorySection:
+const numericPrice =
+  (current?.priceNum ?? null) ??
+  (typeof current?.price === "number" ? current.price : null);
+
+const shouldShowPrice =
+  numericPrice != null && numericPrice > 0;
+
+
   return (
     <div>
       {/* Tytuł kategorii */}
@@ -535,27 +544,30 @@ function CategorySection({
 
       </>
 
-      {/* OPIS + CENA (bez rozmiarów) */}
-      <div className="mt-6 md:mt-8 text-center">
-        <div className="text-center mb-3">
-          <h3 className="font-serif text-base sm:text-lg tracking-wide">
-            {labels.numberLabel}&nbsp;
-            {current?.productNo ?? active + 1}&nbsp;
-            {displayName || "—"}
-          </h3>
+{/* OPIS + CENA (bez rozmiarów) */}
+<div className="mt-6 md:mt-8 text-center">
+  <div className="text-center mb-3">
+    <h3 className="font-serif text-base sm:text-lg tracking-wide">
+      {labels.numberLabel}&nbsp;
+      {current?.productNo ?? active + 1}&nbsp;
+      {displayName || "—"}
+    </h3>
 
-          <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">
-            {displayDesc}
-          </p>
-        </div>
+    <p className="text-sm text-neutral-600 max-w-3xl mx-auto px-2">
+      {displayDesc}
+    </p>
+  </div>
 
-        <p className="mt-6 text-center text-[13px] text-neutral-600 mb-16 italic">
-          {labels.price}{" "}
-          <span className="font-medium tracking-wide">
-            {formatPriceForLang(current?.price, lang)}
-          </span>
-        </p>
-      </div>
+  {shouldShowPrice && (
+    <p className="mt-6 text-center text-[13px] text-neutral-600 mb-16 italic">
+      {labels.price}{" "}
+      <span className="font-medium tracking-wide">
+        {formatPriceForLang(current?.price, lang)}
+      </span>
+    </p>
+  )}
+</div>
+
     </div>
   );
 }
