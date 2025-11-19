@@ -2,8 +2,24 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion, useSpring } from "framer-motion";
-// na górze pliku, wśród importów z lucide-react:
-import { Pencil, Save, X, Trash2, Plus, Image as ImageIcon, Languages, ChevronUp, ChevronDown, Star, StarOff, ArrowUpAZ, ArrowDownAZ, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Pencil,
+  Save,
+  X,
+  Trash2,
+  Plus,
+  Image as ImageIcon,
+  Languages,
+  ChevronUp,
+  ChevronDown,
+  Star,
+  StarOff,
+  ArrowUpAZ,
+  ArrowDownAZ,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+
 /* ========= helpers ========= */
 const API_HEADERS = (pwd: string) => ({ "x-admin-password": pwd });
 function errToString(e: unknown): string {
@@ -91,7 +107,7 @@ type BeltItem = {
   upperSize: string;
   lowerSize: string;
   mainSize?: string | number;
-  buckleSize?: string | number; // ⬅️ NOWE
+  buckleSize?: string | number;
   image?: string;
   beltNo?: number;
 };
@@ -101,6 +117,20 @@ function isCatObj(x: Item["categoryId"]): x is CategoryRef {
   return typeof x === "object" && x !== null && "_id" in x && typeof (x as CategoryRef)._id === "string";
 }
 
+/* Teksty domyślne / placeholdery */
+const BELT_DESC_PL =
+  "Pasek ze skóry licowej najlepszej jakości, wycinany, farbiony ręcznie. Brzegi skóry malowane, zabezpieczony lakierem. Stosowane farby są głęboko penetrujące a co za tym idzie, nie złuszczają się, nie pękają, nie farbią ubrań gdy są mokre. Wszystkie paski są pakowane do ozdobnych pudełek drewnianych z logiem firmy. Wewnątrz pokryte miękką wykładziną.";
+const BELT_DESC_EN =
+  "A belt made of top-quality full-grain leather, hand-cut and hand-dyed. The edges are painted and sealed with lacquer. The dyes used are deeply penetrating, which means they do not peel, crack, or stain clothing when wet. All belts are packaged in decorative wooden boxes with the company logo, lined with soft fabric on the inside.";
+
+const WOOD_DESC_PL =
+  "Drewniany futerał / pudełko wykonane z wysokiej jakości drewna, ręcznie wykończone i zabezpieczone naturalnymi olejami. Idealne do eleganckiego przechowywania i prezentacji produktu.";
+const WOOD_DESC_EN =
+  "Wooden case / box made of high-quality wood, hand-finished and protected with natural oils. Perfect for elegant storage and presentation of the product.";
+
+const FIELD_LABEL_CLASS = "text-[11px] uppercase tracking-wide text-neutral-500 mb-1";
+
+/* ========= UI strings ========= */
 const UI_STRINGS: Record<
   Lang,
   {
@@ -112,8 +142,8 @@ const UI_STRINGS: Record<
     mainSize: string;
     scrollUp: string;
     scrollDown: string;
-    buckleSize: string,
-    sizesInCm: string,
+    buckleSize: string;
+    sizesInCm: string;
   }
 > = {
   pl: {
@@ -125,9 +155,8 @@ const UI_STRINGS: Record<
     mainSize: "Rozmiar główny",
     scrollUp: "Przewiń w górę",
     scrollDown: "Przewiń w dół",
-        buckleSize: "Rozmiar sprzączki",
+    buckleSize: "Rozmiar sprzączki",
     sizesInCm: "Rozmiary w cm",
-    
   },
   en: {
     preview: "Preview (like the homepage)",
@@ -169,9 +198,8 @@ function formatPriceForLang(price: string | number | undefined, lang: Lang) {
 /* ========= PODGLĄD KATEGORII ========= */
 function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltItem[]; lang: Lang }) {
   const [active, setActive] = useState(0);
+  const [heroIdx, setHeroIdx] = useState(0);
 
-  // >>> HOOKI ZAWSZE NA GÓRZE <<<
-  const [heroIdx, setHeroIdx] = useState(0); // index zdjęcia w galerii aktywnego paska
   useEffect(() => setHeroIdx(0), [active]);
 
   const VISIBLE = 4;
@@ -204,7 +232,6 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
   const goPrev = () => setHeroIdx((i) => (i > 0 ? i - 1 : Math.max(0, gallery.length - 1)));
   const goNext = () => setHeroIdx((i) => (i < gallery.length - 1 ? i + 1 : 0));
 
-  // DOPIERO TERAZ ewentualny wczesny return
   if (!belts.length) return null;
 
   return (
@@ -213,10 +240,8 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
         <h1 className="font-serif text-2xl md:text-3xl tracking-wide">Craft Symphony - {title}</h1>
       </div>
 
-      {/* HERO pionowy + kolumna miniaturek po prawej (desktop) */}
       <div className="relative">
         <div className="hidden md:grid grid-cols-[1fr_auto] gap-4 items-start">
-          {/* HERO – pionowy, obraz zawsze pasuje (contain) + watermark + strzałki */}
           <div className="relative w-full">
             <div className="relative w-full aspect-[3/4] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100">
               <AnimatePresence mode="wait">
@@ -237,19 +262,18 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
                         sizes="(max-width:1280px) 70vw, 800px"
                         className="object-cover object-center"
                       />
-                      {/* znak wodny */}
-<div className="absolute left-0 bottom-0 opacity-80">
-  <div className="relative h-16 w-16 overflow-hidden rounded-md">
-    <Image
-      src="/images/znakwodny.png"
-      alt="watermark"
-      fill
-      sizes="64px"
-      className="object-cover pointer-events-none select-none"
-    />
-  </div>
-</div>
-                      {/* strzałki */}
+                      <div className="absolute left-0 bottom-0 opacity-80">
+                        <div className="relative h-16 w-16 overflow-hidden rounded-md">
+                          <Image
+                            src="/images/znakwodny.png"
+                            alt="watermark"
+                            fill
+                            sizes="64px"
+                            className="object-cover pointer-events-none select-none"
+                          />
+                        </div>
+                      </div>
+
                       {gallery.length > 1 && (
                         <>
                           <button
@@ -277,11 +301,14 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
             </div>
           </div>
 
-          {/* MINIATURY – prawa kolumna, poza obrazem */}
           {thumbs.length > 1 && (
             <div className="sticky top-24 self-start">
               <div className="flex flex-col items-center gap-3">
-                <button onClick={scrollUp} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300 bg-white hover:bg-neutral-50" aria-label={t.scrollUp}>
+                <button
+                  onClick={scrollUp}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300 bg-white hover:bg-neutral-50"
+                  aria-label={t.scrollUp}
+                >
                   <ChevronUp className="h-5 w-5" />
                 </button>
 
@@ -295,7 +322,9 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
                             setActive(i);
                             setHeroIdx(0);
                           }}
-                          className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${i === active ? "border-neutral-900 shadow" : "border-neutral-300 hover:border-neutral-500"}`}
+                          className={`relative h-24 w-full overflow-hidden rounded-lg border transition ${
+                            i === active ? "border-neutral-900 shadow" : "border-neutral-300 hover:border-neutral-500"
+                          }`}
                           aria-label={`${t.numberLabel} ${(belts[i]?.beltNo ?? i + 1)}`}
                           title={`Pasek ${(belts[i]?.beltNo ?? i + 1)}`}
                         >
@@ -312,7 +341,11 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
                   </motion.div>
                 </div>
 
-                <button onClick={scrollDown} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300 bg-white hover:bg-neutral-50" aria-label={t.scrollDown}>
+                <button
+                  onClick={scrollDown}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-300 bg-white hover:bg-neutral-50"
+                  aria-label={t.scrollDown}
+                >
                   <ChevronDown className="h-5 w-5" />
                 </button>
               </div>
@@ -320,7 +353,7 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
           )}
         </div>
 
-        {/* MOBILE – hero pionowy + miniatury w rzędzie */}
+        {/* MOBILE HERO */}
         <div className="md:hidden mt-0">
           <div className="relative w-full aspect-[3/4] overflow-hidden rounded-2xl shadow-sm border border-neutral-200 bg-neutral-100">
             <AnimatePresence mode="wait">
@@ -334,18 +367,38 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
               >
                 {gallery[heroIdx] ? (
                   <>
-                    <Image src={gallery[heroIdx]} alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`} fill sizes="100vw" className="object-contain" />
+                    <Image
+                      src={gallery[heroIdx]}
+                      alt={`${t.heroAltPrefix} ${hero?.name ?? `${active + 1}`}`}
+                      fill
+                      sizes="100vw"
+                      className="object-contain"
+                    />
                     <div className="absolute left-2 bottom-2 opacity-80">
                       <div className="relative h-7 w-7">
-                        <Image src="/images/znakwodny.png" alt="watermark" fill sizes="28px" className="object-contain pointer-events-none select-none" />
+                        <Image
+                          src="/images/znakwodny.png"
+                          alt="watermark"
+                          fill
+                          sizes="28px"
+                          className="object-contain pointer-events-none select-none"
+                        />
                       </div>
                     </div>
                     {gallery.length > 1 && (
                       <>
-                        <button onClick={goPrev} className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm" aria-label="Poprzednie zdjęcie">
+                        <button
+                          onClick={goPrev}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+                          aria-label="Poprzednie zdjęcie"
+                        >
                           <ChevronLeft className="h-5 w-5" />
                         </button>
-                        <button onClick={goNext} className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm" aria-label="Następne zdjęcie">
+                        <button
+                          onClick={goNext}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/35 hover:bg-black/50 text-white backdrop-blur-sm"
+                          aria-label="Następne zdjęcie"
+                        >
                           <ChevronRight className="h-5 w-5" />
                         </button>
                       </>
@@ -368,7 +421,9 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
                       setActive(i);
                       setHeroIdx(0);
                     }}
-                    className={`relative h-20 w-20 flex-none overflow-hidden rounded-lg border snap-start ${i === active ? "border-neutral-900 ring-2 ring-neutral-900" : "border-neutral-300 hover:border-neutral-500"}`}
+                    className={`relative h-20 w-20 flex-none overflow-hidden rounded-lg border snap-start ${
+                      i === active ? "border-neutral-900 ring-2 ring-neutral-900" : "border-neutral-300 hover:border-neutral-500"
+                    }`}
                     aria-label={`${t.numberLabel} ${i + 1}`}
                   >
                     <div className="relative h-20 w-20">
@@ -393,8 +448,6 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
         </div>
 
         <div className="max-w-4xl mx-auto">
-
-          {/* nagłówek: Rozmiary w cm / Sizes in cm */}
           <div className="text-center mt-14 mb-2">
             <span className="text-[12px] uppercase tracking-wide text-neutral-500">{UI_STRINGS[lang].sizesInCm}</span>
           </div>
@@ -403,20 +456,26 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
 
           <div className="rounded-2xl overflow-visible">
             <div className="relative mx-auto w-2/3 md:w-1/3 aspect-[3/2]">
-              <Image src="/images/belt2.png" alt={UI_STRINGS[lang].schemaAlt} fill sizes="(max-width:768px) 66vw, 33vw" className="object-contain" />
+              <Image
+                src="/images/belt2.png"
+                alt={UI_STRINGS[lang].schemaAlt}
+                fill
+                sizes="(max-width:768px) 66vw, 33vw"
+                className="object-contain"
+              />
 
-              {/* LEWY bąbelek: sprzączka + podpis */}
+              {/* LEWY bąbelek */}
               <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 left-0 -translate-x-[110%]">
                 <em className="text-xs text-neutral-500 not-italic italic">{UI_STRINGS[lang].buckleSize}</em>
-                <div className="inline-flex items-center gap-2 rounded-xl  px-4 text-sm text-neutral-600 font-medium min-w-[8rem] justify-center">
+                <div className="inline-flex items-center gap-2 rounded-xl px-4 text-sm text-neutral-600 font-medium min-w-[8rem] justify-center">
                   {typeof hero?.buckleSize !== "undefined" && hero?.buckleSize !== null ? `${hero.buckleSize}` : "—"}
                 </div>
               </div>
 
-              {/* PRAWY bąbelek: rozmiar główny + podpis */}
+              {/* PRAWY bąbelek */}
               <div className="hidden md:flex flex-col items-center gap-1 absolute top-1/2 -translate-y-1/2 right-0 translate-x-[110%]">
                 <em className="text-xs text-neutral-500 not-italic italic">{UI_STRINGS[lang].mainSize}</em>
-                <div className="inline-flex items-center gap-2 rounded-xl  px-4 text-sm text-neutral-600 font-medium min-w-[8rem] justify-center">
+                <div className="inline-flex items-center gap-2 rounded-xl px-4 text-sm text-neutral-600 font-medium min-w-[8rem] justify-center">
                   {typeof hero?.mainSize !== "undefined" && hero?.mainSize !== null ? `${hero.mainSize}` : "—"}
                 </div>
               </div>
@@ -434,7 +493,6 @@ function CategoryPreview({ title, belts, lang }: { title: string; belts: BeltIte
   );
 }
 
-
 /* ========= główna strona panelu ========= */
 export default function AdminPage() {
   // HOOKI
@@ -447,17 +505,15 @@ export default function AdminPage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const [newCatName, setNewCatName] = useState("");
-
   const [editCat, setEditCat] = useState<Record<string, { name: string; slug: string }>>({});
 
-  // CREATE form (z wieloma zdjęciami + EN)
+  // CREATE form
   const [form, setForm] = useState({
     categoryId: "",
     title: "",
     titleEn: "",
-    description:
-      "Pasek ze skóry licowej najlepszej jakości, wycinany, farbiony ręcznie. Brzegi skóry malowane, zabezpieczony lakierem. Stosowane farby są głęboko penetrujące a co za tym idzie, nie złuszczają się, nie pękają, nie farbią ubrań gdy są mokre. Wszystkie paski są pakowane do ozdobnych pudełek drewnianych z logiem firmy. Wewnątrz pokryte miekką wykładziną.",
-    descriptionEn: "A belt made of top-quality full-grain leather, hand-cut and hand-dyed. The edges are painted and sealed with lacquer. The dyes used are deeply penetrating, which means they do not peel, crack, or stain clothing when wet. All belts are packaged in decorative wooden boxes with the company logo, lined with soft fabric on the inside.",
+    description: BELT_DESC_PL,
+    descriptionEn: BELT_DESC_EN,
     rozmiarMin: "",
     rozmiarMax: "",
     rozmiarGlowny: "",
@@ -466,13 +522,13 @@ export default function AdminPage() {
     numerPaska: "",
     files: [] as File[],
     previews: [] as string[],
-    imagesMeta: [] as Omit<ItemImage, "url">[], // alt-y/isPrimary/order dla uploadowanych
+    imagesMeta: [] as Omit<ItemImage, "url">[],
   });
 
   const [autoTranslateEN, setAutoTranslateEN] = useState(false);
   const [enCache, setEnCache] = useState<Record<string, { titleEn: string; descriptionEn: string }>>({});
 
-  // EDIT state per item – z wieloma zdjęciami
+  // EDIT state per item
   const [editItem, setEditItem] = useState<
     Record<
       string,
@@ -489,15 +545,45 @@ export default function AdminPage() {
         cenaPLN: string;
         numerPaska: string;
 
-        images: ItemImage[];     // istniejące (z URL-ami)
-        newFiles: File[];        // nowe do uploadu
-        newPreviews: string[];   // URL.createObjectURL
-        newMeta: Omit<ItemImage, "url">[]; // meta dla nowych
+        images: ItemImage[];
+        newFiles: File[];
+        newPreviews: string[];
+        newMeta: Omit<ItemImage, "url">[];
       }
     >
   >({});
 
   const [previewLang, setPreviewLang] = useState<Lang>("pl");
+
+  /* Wybrana kategoria dla create (WOOD detection) */
+  const selectedCat = useMemo(
+    () => cats.find((c) => c._id === form.categoryId),
+    [cats, form.categoryId]
+  );
+  const isWoodCreate = selectedCat?.slug === "wood";
+
+  /* Zmiana domyślnych opisów przy zmianie kategorii (paski / drewno) */
+  useEffect(() => {
+    if (!selectedCat) return;
+    setForm((prev) => {
+      const next = { ...prev };
+
+      const isPrevBeltPL = prev.description === BELT_DESC_PL || prev.description.trim() === "";
+      const isPrevBeltEN = prev.descriptionEn === BELT_DESC_EN || prev.descriptionEn.trim() === "";
+      const isPrevWoodPL = prev.description === WOOD_DESC_PL || prev.description.trim() === "";
+      const isPrevWoodEN = prev.descriptionEn === WOOD_DESC_EN || prev.descriptionEn.trim() === "";
+
+      if (selectedCat.slug === "wood") {
+        if (isPrevBeltPL) next.description = WOOD_DESC_PL;
+        if (isPrevBeltEN) next.descriptionEn = WOOD_DESC_EN;
+      } else {
+        if (isPrevWoodPL) next.description = BELT_DESC_PL;
+        if (isPrevWoodEN) next.descriptionEn = BELT_DESC_EN;
+      }
+
+      return next;
+    });
+  }, [selectedCat?.slug]);
 
   /* ===== auth persistence ===== */
   useEffect(() => {
@@ -546,7 +632,6 @@ export default function AdminPage() {
   const refreshItems = async () => {
     const data = (await authedJSON<Item[]>("/api/admin/items")) ?? [];
     const arr = Array.isArray(data) ? data : [];
-    // fallback: jeżeli jakiś item nie ma orderów/isPrimary – generujemy
     arr.forEach((it) => {
       it.images = (it.images ?? [])
         .map((img, idx) => ({ order: idx, isPrimary: idx === 0, altPl: "", altEn: "", ...img }))
@@ -555,7 +640,7 @@ export default function AdminPage() {
     setItems(arr);
   };
 
-  /* ===== translator helper (opcjonalny) ===== */
+  /* ===== translator helper ===== */
   async function translatePLtoEN(text: string): Promise<string> {
     try {
       const res = await authedFetch("/api/admin/translate", {
@@ -638,7 +723,6 @@ export default function AdminPage() {
     }
   };
 
-  // zamiana order z sąsiadem
   const moveCat = async (id: string, dir: -1 | 1) => {
     const sorted = [...cats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     const idx = sorted.findIndex((c) => c._id === id);
@@ -687,7 +771,6 @@ export default function AdminPage() {
   const uploadMany = async (files: File[]) => {
     const urls: string[] = [];
     for (const f of files) {
-      // upload sekwencyjny – prosto i stabilnie
       const url = await uploadOne(f);
       urls.push(url);
     }
@@ -705,7 +788,6 @@ export default function AdminPage() {
       if (!form.files.length) throw new Error("Dodaj co najmniej jedno zdjęcie");
 
       const uploaded = await uploadMany(form.files);
-      // zlep meta + url-e
       const imgs: ItemImage[] = uploaded.map((url, i) => ({
         url,
         ...(form.imagesMeta[i] || {}),
@@ -722,32 +804,28 @@ export default function AdminPage() {
           titleEn: form.titleEn || undefined,
           description: form.description,
           descriptionEn: form.descriptionEn || undefined,
-rozmiarMin: !isWoodCreate && form.rozmiarMin !== "" ? Number(form.rozmiarMin) : undefined,
-rozmiarMax: !isWoodCreate && form.rozmiarMax !== "" ? Number(form.rozmiarMax) : undefined,
-rozmiarGlowny: !isWoodCreate && form.rozmiarGlowny !== "" ? Number(form.rozmiarGlowny) : undefined,
-rozSprz: !isWoodCreate && form.rozSprz !== "" ? Number(form.rozSprz) : undefined,
-
+          rozmiarMin: !isWoodCreate && form.rozmiarMin !== "" ? Number(form.rozmiarMin) : undefined,
+          rozmiarMax: !isWoodCreate && form.rozmiarMax !== "" ? Number(form.rozmiarMax) : undefined,
+          rozmiarGlowny: !isWoodCreate && form.rozmiarGlowny !== "" ? Number(form.rozmiarGlowny) : undefined,
+          rozSprz: !isWoodCreate && form.rozSprz !== "" ? Number(form.rozSprz) : undefined,
           cenaPLN: Number(form.cenaPLN),
           numerPaska: Number(form.numerPaska),
           images: imgs,
         }),
       });
 
-      // cleanup previews
       form.previews.forEach((u) => URL.revokeObjectURL(u));
 
-      // reset
       setForm({
         categoryId: "",
         title: "",
         titleEn: "",
-        description:
-          "Pasek ze skóry licowej najlepszej jakości, wycinany, farbiony ręcznie. Brzegi skóry malowane, zabezpieczony lakierem. Stosowane farby są głęboko penetrujące a co za tym idzie, nie złuszczają się, nie pękają, nie farbią ubrań gdy są mokre. Długość paska od klamry do końca 120cm.",
-        descriptionEn: "",
+        description: BELT_DESC_PL,
+        descriptionEn: BELT_DESC_EN,
         rozmiarMin: "",
         rozmiarMax: "",
         rozmiarGlowny: "",
-        rozSprz: "", 
+        rozSprz: "",
         cenaPLN: "",
         numerPaska: "",
         files: [],
@@ -767,9 +845,7 @@ rozSprz: !isWoodCreate && form.rozSprz !== "" ? Number(form.rozSprz) : undefined
   // START EDIT
   const startEditItem = (it: Item) => {
     const catId = typeof it.categoryId === "string" ? it.categoryId : it.categoryId?._id;
-    // posortuj po order
     const sortedImgs = [...(it.images ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    // jeżeli brak primary – ustaw pierwszy
     if (!sortedImgs.some((x) => x.isPrimary)) {
       if (sortedImgs[0]) sortedImgs[0].isPrimary = true;
     }
@@ -811,25 +887,24 @@ rozSprz: !isWoodCreate && form.rozSprz !== "" ? Number(form.rozSprz) : undefined
     setLoading(true);
     setMsg(null);
     try {
-      // upload nowych
+      const cat = cats.find((c) => c._id === data.categoryId);
+      const isWoodEdit = cat?.slug === "wood";
+
       const newUrls = await uploadMany(data.newFiles);
       const newImgs: ItemImage[] = newUrls.map((url, i) => ({
         url,
         ...(data.newMeta[i] || {}),
-        order: data.newMeta[i]?.order ?? (data.images.length + i),
+        order: data.newMeta[i]?.order ?? data.images.length + i,
         isPrimary: data.newMeta[i]?.isPrimary ?? false,
       }));
 
-      // sklej wszystko
       const merged = [...data.images, ...newImgs]
-        .map((img, idx) => ({ ...img, order: img.order ?? idx })) // upewnij się, że każdy ma order
+        .map((img, idx) => ({ ...img, order: img.order ?? idx }))
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-      // gwarancja jednego primary
       if (!merged.some((x) => x.isPrimary)) {
         if (merged[0]) merged[0].isPrimary = true;
       } else {
-        // jeżeli kilka zaznaczonych, zostaw pierwszy
         let hit = false;
         merged.forEach((m) => {
           if (m.isPrimary && !hit) {
@@ -849,11 +924,10 @@ rozSprz: !isWoodCreate && form.rozSprz !== "" ? Number(form.rozSprz) : undefined
           description: data.description,
           titleEn: data.titleEn || undefined,
           descriptionEn: data.descriptionEn || undefined,
-rozmiarMin: data.rozmiarMin !== "" ? Number(data.rozmiarMin) : null,
-rozmiarMax: data.rozmiarMax !== "" ? Number(data.rozmiarMax) : null,
-rozmiarGlowny: data.rozmiarGlowny !== "" ? Number(data.rozmiarGlowny) : null,
-rozSprz: data.rozSprz !== "" ? Number(data.rozSprz) : null,
-
+          rozmiarMin: isWoodEdit ? null : data.rozmiarMin !== "" ? Number(data.rozmiarMin) : null,
+          rozmiarMax: isWoodEdit ? null : data.rozmiarMax !== "" ? Number(data.rozmiarMax) : null,
+          rozmiarGlowny: isWoodEdit ? null : data.rozmiarGlowny !== "" ? Number(data.rozmiarGlowny) : null,
+          rozSprz: isWoodEdit ? null : data.rozSprz !== "" ? Number(data.rozSprz) : null,
           cenaPLN: Number(data.cenaPLN),
           numerPaska: Number(data.numerPaska),
           images: merged,
@@ -909,20 +983,15 @@ rozSprz: data.rozSprz !== "" ? Number(data.rozSprz) : null,
           name: useEN ? nameEN || namePL : namePL,
           description: useEN ? descEN || descPL : descPL,
           price: i.cenaPLN,
-         upperSize:
-  i.rozmiarMin != null && i.rozmiarMax != null
-    ? `${Math.max(Number(i.rozmiarMin), Number(i.rozmiarMax))} cm`
-    : "—",
-lowerSize:
-  i.rozmiarMin != null && i.rozmiarMax != null
-    ? `${Math.min(Number(i.rozmiarMin), Number(i.rozmiarMax))} cm`
-    : "—",
-mainSize:
-  i.rozmiarGlowny != null && !isNaN(Number(i.rozmiarGlowny))
-    ? `${i.rozmiarGlowny} cm`
-    : undefined,
-
-          // NOWE: sprzączka → bąbelek po lewej
+          upperSize:
+            i.rozmiarMin != null && i.rozmiarMax != null
+              ? `${Math.max(Number(i.rozmiarMin), Number(i.rozmiarMax))} cm`
+              : "—",
+          lowerSize:
+            i.rozmiarMin != null && i.rozmiarMax != null
+              ? `${Math.min(Number(i.rozmiarMin), Number(i.rozmiarMax))} cm`
+              : "—",
+          mainSize: i.rozmiarGlowny != null && !isNaN(Number(i.rozmiarGlowny)) ? `${i.rozmiarGlowny} cm` : undefined,
           buckleSize: typeof i.rozSprz === "number" && !isNaN(i.rozSprz) ? `${i.rozSprz} cm` : undefined,
           image: primary?.url,
           beltNo: i.numerPaska,
@@ -932,14 +1001,6 @@ mainSize:
       return { title: c.name, belts };
     });
   }, [cats, items, previewLang, autoTranslateEN, enCache]);
-
-// pod: const sortedCats = [...cats]...
-const selectedCat = useMemo(
-  () => cats.find((c) => c._id === form.categoryId),
-  [cats, form.categoryId]
-);
-const isWoodCreate = selectedCat?.slug === "wood";
-
 
   // auto-translate cache — efekt
   useEffect(() => {
@@ -969,14 +1030,19 @@ const isWoodCreate = selectedCat?.slug === "wood";
         <div className="w-full max-w-sm rounded-2xl border border-neutral-300 bg-white p-6 shadow-sm">
           <h1 className="text-lg font-serif mb-2">Panel administracyjny</h1>
           <p className="text-sm text-neutral-600 mb-4">Podaj hasło, aby przejść dalej.</p>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="hasło"
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 mb-3 outline-none focus:ring-2 focus:ring-neutral-900/10"
-          />
-          <button onClick={tryAuth} className="w-full px-4 py-2 rounded-lg bg-neutral-900 text-white">Zaloguj</button>
+          <div className="flex flex-col gap-1">
+            <span className={FIELD_LABEL_CLASS}>Hasło</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="hasło"
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 mb-3 outline-none focus:ring-2 focus:ring-neutral-900/10"
+            />
+          </div>
+          <button onClick={tryAuth} className="w-full px-4 py-2 rounded-lg bg-neutral-900 text-white">
+            Zaloguj
+          </button>
           {msg && <p className="mt-3 text-sm text-red-600">{msg}</p>}
         </div>
       </main>
@@ -1010,7 +1076,6 @@ const isWoodCreate = selectedCat?.slug === "wood";
       [files[idx], files[j]] = [files[j], files[idx]];
       [previews[idx], previews[j]] = [previews[j], previews[idx]];
       [meta[idx], meta[j]] = [meta[j], meta[idx]];
-      // przelicz ordery
       const withOrder = meta.map((m, i) => ({ ...m, order: i }));
       return { ...s, files, previews, imagesMeta: withOrder };
     });
@@ -1023,7 +1088,9 @@ const isWoodCreate = selectedCat?.slug === "wood";
           <div className="flex items-center gap-2 text-xs text-neutral-500">
             <button
               onClick={() => setAutoTranslateEN((v) => !v)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ${autoTranslateEN ? "bg-neutral-900 text-white border-neutral-900" : "bg-white"}`}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 ${
+                autoTranslateEN ? "bg-neutral-900 text-white border-neutral-900" : "bg-white"
+              }`}
               title="Automatyczne tłumaczenie PL→EN (podgląd)"
             >
               <Languages className="h-4 w-4" /> EN auto
@@ -1037,13 +1104,16 @@ const isWoodCreate = selectedCat?.slug === "wood";
           <h2 className="font-medium mb-4">Kategorie</h2>
 
           <form onSubmit={submitCategory} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 mb-4">
-            <input
-              value={newCatName}
-              onChange={(e) => setNewCatName(e.target.value)}
-              placeholder="Nazwa kategorii"
-              className="rounded-lg border border-neutral-300 px-4 py-3 text-lg"
-              required
-            />
+            <div className="flex flex-col">
+              <span className={FIELD_LABEL_CLASS}>Nazwa kategorii</span>
+              <input
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                placeholder="Nazwa kategorii"
+                className="rounded-lg border border-neutral-300 px-4 py-3 text-lg"
+                required
+              />
+            </div>
             <button disabled={loading} className="rounded-lg bg-neutral-900 text-white px-6 py-3 text-lg">
               {loading ? "Zapisywanie…" : "Dodaj kategorię"}
             </button>
@@ -1063,38 +1133,78 @@ const isWoodCreate = selectedCat?.slug === "wood";
                     </div>
                   ) : (
                     <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
-                      <input
-                        value={editCat[c._id].name}
-                        onChange={(e) => setEditCat((s) => ({ ...s, [c._id]: { ...s[c._id], name: e.target.value } }))}
-                        className="rounded border border-neutral-300 px-3 py-1.5"
-                      />
-                      <input
-                        value={editCat[c._id].slug}
-                        onChange={(e) => setEditCat((s) => ({ ...s, [c._id]: { ...s[c._id], slug: e.target.value } }))}
-                        className="rounded border border-neutral-300 px-3 py-1.5"
-                      />
+                      <div className="flex flex-col">
+                        <span className={FIELD_LABEL_CLASS}>Nazwa</span>
+                        <input
+                          value={editCat[c._id].name}
+                          onChange={(e) =>
+                            setEditCat((s) => ({ ...s, [c._id]: { ...s[c._id], name: e.target.value } }))
+                          }
+                          className="rounded border border-neutral-300 px-3 py-1.5"
+                        />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className={FIELD_LABEL_CLASS}>Slug</span>
+                        <input
+                          value={editCat[c._id].slug}
+                          onChange={(e) =>
+                            setEditCat((s) => ({ ...s, [c._id]: { ...s[c._id], slug: e.target.value } }))
+                          }
+                          className="rounded border border-neutral-300 px-3 py-1.5"
+                        />
+                      </div>
                     </div>
                   )}
 
                   <div className="flex items-center gap-2">
-                    <button onClick={() => moveCat(c._id, -1)} disabled={!canUp} className={`p-2 rounded ${canUp ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`} title="Przenieś w górę">↑</button>
-                    <button onClick={() => moveCat(c._id, 1)} disabled={!canDown} className={`p-2 rounded ${canDown ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`} title="Przenieś w dół">↓</button>
+                    <button
+                      onClick={() => moveCat(c._id, -1)}
+                      disabled={!canUp}
+                      className={`p-2 rounded ${canUp ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`}
+                      title="Przenieś w górę"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => moveCat(c._id, 1)}
+                      disabled={!canDown}
+                      className={`p-2 rounded ${canDown ? "hover:bg-neutral-100" : "opacity-40 cursor-not-allowed"}`}
+                      title="Przenieś w dół"
+                    >
+                      ↓
+                    </button>
 
                     {!isEditing ? (
                       <>
-                        <button onClick={() => startEditCat(c)} className="p-2 rounded hover:bg-neutral-100" title="Edytuj">
+                        <button
+                          onClick={() => startEditCat(c)}
+                          className="p-2 rounded hover:bg-neutral-100"
+                          title="Edytuj"
+                        >
                           <Pencil className="h-4 w-4" />
                         </button>
-                        <button onClick={() => deleteCat(c._id)} className="p-2 rounded hover:bg-red-50 text-red-600" title="Usuń">
+                        <button
+                          onClick={() => deleteCat(c._id)}
+                          className="p-2 rounded hover:bg-red-50 text-red-600"
+                          title="Usuń"
+                        >
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </>
                     ) : (
                       <>
-                        <button onClick={() => saveCat(c._id)} className="p-2 rounded hover:bg-green-50 text-green-700" title="Zapisz">
+                        <button
+                          onClick={() => saveCat(c._id)}
+                          className="p-2 rounded hover:bg-green-50 text-green-700"
+                          title="Zapisz"
+                        >
                           <Save className="h-4 w-4" />
                         </button>
-                        <button onClick={() => cancelEditCat(c._id)} className="p-2 rounded hover:bg-neutral-100" title="Anuluj">
+                        <button
+                          onClick={() => cancelEditCat(c._id)}
+                          className="p-2 rounded hover:bg-neutral-100"
+                          title="Anuluj"
+                        >
                           <X className="h-4 w-4" />
                         </button>
                       </>
@@ -1107,69 +1217,156 @@ const isWoodCreate = selectedCat?.slug === "wood";
           </ul>
         </section>
 
-        {/* PRZEDMIOTY */}
+        {/* PRZEDMIOTY – CREATE */}
         <section className="rounded-2xl border border-neutral-300 bg-white p-4 md:p-6 shadow-sm text-gray-800">
-          <h2 className="font-medium mb-4">Dodaj pasek</h2>
+          <h2 className="font-medium mb-4">Dodaj produkt</h2>
 
           <form onSubmit={submitItem} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required>
-                <option value="">Wybierz kategorię…</option>
-                {sortedCats.map((c) => (
-                  <option key={c._id} value={c._id}>{c.name}</option>
-                ))}
-              </select>
-              <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Tytuł (PL)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
-              <input value={form.titleEn} onChange={(e) => setForm({ ...form, titleEn: e.target.value })} placeholder="Tytuł (EN)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" />
+              <div className="flex flex-col">
+                <span className={FIELD_LABEL_CLASS}>Kategoria</span>
+                <select
+                  value={form.categoryId}
+                  onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+                  className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                  required
+                >
+                  <option value="">Wybierz kategorię…</option>
+                  {sortedCats.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col">
+                <span className={FIELD_LABEL_CLASS}>Tytuł (PL)</span>
+                <input
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  placeholder="Tytuł po polsku"
+                  className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <span className={FIELD_LABEL_CLASS}>Title (EN)</span>
+                <input
+                  value={form.titleEn}
+                  onChange={(e) => setForm({ ...form, titleEn: e.target.value })}
+                  placeholder="Title in English"
+                  className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Opis (PL)" className="w-full h-[200px] rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
-              <textarea value={form.descriptionEn} onChange={(e) => setForm({ ...form, descriptionEn: e.target.value })} placeholder="Opis (EN)" className="w-full h-[200px]  rounded-xl border border-neutral-300 px-4 py-3 text-lg" rows={3} />
+              <div className="flex flex-col">
+                <span className={FIELD_LABEL_CLASS}>Opis (PL)</span>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder={
+                    isWoodCreate
+                      ? "Opis produktu drewnianego (PL) – np. futerał/pudełko z drewna…"
+                      : "Opis paska skórzanego (PL)…"
+                  }
+                  className="w-full h-[200px] rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                  rows={4}
+                />
+              </div>
+              <div className="flex flex-col">
+                <span className={FIELD_LABEL_CLASS}>Description (EN)</span>
+                <textarea
+                  value={form.descriptionEn}
+                  onChange={(e) => setForm({ ...form, descriptionEn: e.target.value })}
+                  placeholder={
+                    isWoodCreate
+                      ? "Wood product description (EN) – e.g. wooden case/box…"
+                      : "Leather belt description (EN)…"
+                  }
+                  className="w-full h-[200px] rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                  rows={4}
+                />
+              </div>
             </div>
 
-{!isWoodCreate && (
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-    <input
-      type="number"
-      value={form.rozmiarMin}
-      onChange={(e) => setForm({ ...form, rozmiarMin: e.target.value })}
-      placeholder="Rozmiar min (cm)"
-      className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-    />
-    <input
-      type="number"
-      value={form.rozmiarMax}
-      onChange={(e) => setForm({ ...form, rozmiarMax: e.target.value })}
-      placeholder="Rozmiar max (cm)"
-      className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-    />
-    <input
-      type="number"
-      value={form.rozSprz}
-      onChange={(e) => setForm({ ...form, rozSprz: e.target.value })}
-      placeholder="Rozmiar sprzączki (cm)"
-      className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-    />
-    <input
-      type="number"
-      value={form.rozmiarGlowny}
-      onChange={(e) => setForm({ ...form, rozmiarGlowny: e.target.value })}
-      placeholder="Rozmiar główny (cm)"
-      className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
-    />
-  </div>
-)}
-
+            {!isWoodCreate && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="flex flex-col">
+                  <span className={FIELD_LABEL_CLASS}>Rozmiar min (cm)</span>
+                  <input
+                    type="number"
+                    value={form.rozmiarMin}
+                    onChange={(e) => setForm({ ...form, rozmiarMin: e.target.value })}
+                    placeholder="np. 80"
+                    className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <span className={FIELD_LABEL_CLASS}>Rozmiar max (cm)</span>
+                  <input
+                    type="number"
+                    value={form.rozmiarMax}
+                    onChange={(e) => setForm({ ...form, rozmiarMax: e.target.value })}
+                    placeholder="np. 100"
+                    className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <span className={FIELD_LABEL_CLASS}>Rozmiar sprzączki (cm)</span>
+                  <input
+                    type="number"
+                    value={form.rozSprz}
+                    onChange={(e) => setForm({ ...form, rozSprz: e.target.value })}
+                    placeholder="np. 4"
+                    className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <span className={FIELD_LABEL_CLASS}>Rozmiar główny (cm)</span>
+                  <input
+                    type="number"
+                    value={form.rozmiarGlowny}
+                    onChange={(e) => setForm({ ...form, rozmiarGlowny: e.target.value })}
+                    placeholder="np. 95"
+                    className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input type="number" value={form.cenaPLN} onChange={(e) => setForm({ ...form, cenaPLN: e.target.value })} placeholder="Cena (PLN)" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
-              <input type="number" value={form.numerPaska} onChange={(e) => setForm({ ...form, numerPaska: e.target.value })} placeholder="Nr" className="rounded-xl border border-neutral-300 px-4 py-3 text-lg" required />
+              <div className="flex flex-col">
+                <span className={FIELD_LABEL_CLASS}>Cena (PLN)</span>
+                <input
+                  type="number"
+                  value={form.cenaPLN}
+                  onChange={(e) => setForm({ ...form, cenaPLN: e.target.value })}
+                  placeholder="Cena w PLN"
+                  className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                  required
+                />
+              </div>
+              <div className="flex flex-col">
+                <span className={FIELD_LABEL_CLASS}>Numer / kod</span>
+                <input
+                  type="number"
+                  value={form.numerPaska}
+                  onChange={(e) => setForm({ ...form, numerPaska: e.target.value })}
+                  placeholder="Numer produktu"
+                  className="rounded-xl border border-neutral-300 px-4 py-3 text-lg"
+                  required
+                />
+              </div>
             </div>
 
             {/* UPLOAD WIELOKROTNY */}
             <div className="space-y-3">
-              <label className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-neutral-300 px-4 py-6 cursor-pointer hover:bg-neutral-50">
+              <label className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-neutral-300 px-4 py-6 cursor-pointer hover:bg-neutral-50">
+                <span className={FIELD_LABEL_CLASS}>Zdjęcia produktu</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -1182,7 +1379,7 @@ const isWoodCreate = selectedCat?.slug === "wood";
                     const meta: Omit<ItemImage, "url">[] = files.map((_, i) => ({
                       altPl: "",
                       altEn: "",
-                      isPrimary: form.files.length === 0 && i === 0, // jeśli pierwsze zdjęcia – ustaw primary na pierwszym
+                      isPrimary: form.files.length === 0 && i === 0,
                       order: form.files.length + i,
                     }));
                     setForm((s) => ({
@@ -1197,7 +1394,6 @@ const isWoodCreate = selectedCat?.slug === "wood";
                 <span className="text-lg">Wrzuć zdjęcia</span>
               </label>
 
-              {/* Galeria draft */}
               {form.previews.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {form.previews.map((src, i) => {
@@ -1208,15 +1404,32 @@ const isWoodCreate = selectedCat?.slug === "wood";
                         <div className="relative w-full aspect-[4/3]">
                           <Image src={src} alt={`preview-${i + 1}`} fill className="object-cover" />
                           <div className="absolute top-2 left-2 flex gap-1">
-                            <button type="button" onClick={() => ensureOnePrimaryCreate(i)} className={`px-2 py-1 text-xs rounded ${primary ? "bg-yellow-400/90" : "bg-white/80 border"}`} title={primary ? "Zdjęcie główne" : "Ustaw jako główne"}>
+                            <button
+                              type="button"
+                              onClick={() => ensureOnePrimaryCreate(i)}
+                              className={`px-2 py-1 text-xs rounded ${
+                                primary ? "bg-yellow-400/90" : "bg-white/80 border"
+                              }`}
+                              title={primary ? "Zdjęcie główne" : "Ustaw jako główne"}
+                            >
                               {primary ? <Star className="h-3.5 w-3.5" /> : <StarOff className="h-3.5 w-3.5" />}
                             </button>
                           </div>
                           <div className="absolute top-2 right-2 flex gap-1">
-                            <button type="button" onClick={() => reorderCreate(i, -1)} className="px-2 py-1 text-xs rounded bg-white/80 border" title="W górę">
+                            <button
+                              type="button"
+                              onClick={() => reorderCreate(i, -1)}
+                              className="px-2 py-1 text-xs rounded bg-white/80 border"
+                              title="W górę"
+                            >
                               <ArrowUpAZ className="h-3.5 w-3.5" />
                             </button>
-                            <button type="button" onClick={() => reorderCreate(i, 1)} className="px-2 py-1 text-xs rounded bg-white/80 border" title="W dół">
+                            <button
+                              type="button"
+                              onClick={() => reorderCreate(i, 1)}
+                              className="px-2 py-1 text-xs rounded bg-white/80 border"
+                              title="W dół"
+                            >
                               <ArrowDownAZ className="h-3.5 w-3.5" />
                             </button>
                           </div>
@@ -1234,9 +1447,7 @@ const isWoodCreate = selectedCat?.slug === "wood";
                                 files.splice(i, 1);
                                 previews.splice(i, 1);
                                 meta.splice(i, 1);
-                                // przelicz order
                                 const withOrder = meta.map((m, idx) => ({ ...m, order: idx }));
-                                // jeżeli usunęliśmy primary – ustaw 0 jako primary
                                 if (!withOrder.some((m) => m.isPrimary) && withOrder[0]) withOrder[0].isPrimary = true;
                                 return { ...s, files, previews, imagesMeta: withOrder };
                               })
@@ -1252,14 +1463,20 @@ const isWoodCreate = selectedCat?.slug === "wood";
               )}
             </div>
 
-            <button disabled={loading} className="w-full rounded-2xl bg-neutral-900 text-white px-6 py-4 text-xl font-medium inline-flex items-center justify-center gap-2">
-              <Plus className="h-5 w-5" /> {loading ? "Zapisywanie…" : "Dodaj pasek"}
+            <button
+              disabled={loading}
+              className="w-full rounded-2xl bg-neutral-900 text-white px-6 py-4 text-xl font-medium inline-flex items-center justify-center gap-2"
+            >
+              <Plus className="h-5 w-5" /> {loading ? "Zapisywanie…" : "Dodaj produkt"}
             </button>
           </form>
 
-          {msg && <p className="mt-3 text-sm text-neutral-700">{msg}</p>}
+          {msg && <p className="mt-3 text-sm text-neutral-700">{msg}</p>
 
-          <h3 className="mt-8 font-medium">Paski wg kategorii</h3>
+          }
+
+          {/* LISTA / EDIT */}
+          <h3 className="mt-8 font-medium">Produkty wg kategorii</h3>
           <div className="mt-4 space-y-8">
             {sortedCats.map((c) => {
               const its = items
@@ -1278,9 +1495,19 @@ const isWoodCreate = selectedCat?.slug === "wood";
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {its.map((it) => {
                       const editing = editItem[it._id];
-                      const primary = (editing?.images ?? it.images ?? []).find((im) => im.isPrimary) || (editing?.images ?? it.images ?? [])[0];
+                      const primary =
+                        (editing?.images ?? it.images ?? []).find((im) => im.isPrimary) ||
+                        (editing?.images ?? it.images ?? [])[0];
                       const hero = primary?.url || "/images/placeholder.png";
-                      const catName = typeof it.categoryId === "string" ? it.categoryId : isCatObj(it.categoryId) ? it.categoryId.name : "";
+                      const catName =
+                        typeof it.categoryId === "string"
+                          ? it.categoryId
+                          : isCatObj(it.categoryId)
+                          ? it.categoryId.name
+                          : "";
+                      const editingCat = editing && cats.find((cc) => cc._id === editing.categoryId);
+                      const isWoodEdit = editingCat?.slug === "wood";
+
                       return (
                         <div key={it._id} className="rounded-2xl p-3 flex flex-col gap-3 bg-white border">
                           <div className="relative w-full aspect-[4/3]">
@@ -1292,11 +1519,13 @@ const isWoodCreate = selectedCat?.slug === "wood";
                               <div className="font-medium text-base">{it.title}</div>
                               <div className="text-neutral-600">EN: {it.titleEn || "—"}</div>
                               <div className="text-neutral-600">Kategoria: {catName}</div>
-                             {it.rozmiarMin != null && it.rozmiarMax != null ? (
-  <div className="text-neutral-600">Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm</div>
-) : (
-  <div className="text-neutral-600">Rozmiar: —</div>
-)}
+                              {it.rozmiarMin != null && it.rozmiarMax != null ? (
+                                <div className="text-neutral-600">
+                                  Rozmiar: {it.rozmiarMin} – {it.rozmiarMax} cm
+                                </div>
+                              ) : (
+                                <div className="text-neutral-600">Rozmiar: —</div>
+                              )}
 
                               {typeof it.rozmiarGlowny === "number" && (
                                 <div className="text-neutral-600">Rozmiar główny: {it.rozmiarGlowny} cm</div>
@@ -1304,49 +1533,210 @@ const isWoodCreate = selectedCat?.slug === "wood";
                               {typeof it.rozSprz === "number" && (
                                 <div className="text-neutral-600">Sprzączka: {it.rozSprz} cm</div>
                               )}
-                              <div className="text-neutral-600">Cena: {it.cenaPLN} PLN, Nr: {it.numerPaska}</div>
+                              <div className="text-neutral-600">
+                                Cena: {it.cenaPLN} PLN, Nr: {it.numerPaska}
+                              </div>
 
                               <div className="mt-3 flex flex-wrap gap-2">
-                                <button onClick={() => startEditItem(it)} className="px-4 py-2 rounded-lg border hover:bg-neutral-50 text-neutral-700 inline-flex items-center gap-1.5">
+                                <button
+                                  onClick={() => startEditItem(it)}
+                                  className="px-4 py-2 rounded-lg border hover:bg-neutral-50 text-neutral-700 inline-flex items-center gap-1.5"
+                                >
                                   <Pencil className="h-4 w-4" /> Edytuj
                                 </button>
-                                <button onClick={() => deleteItem(it._id)} className="px-4 py-2 rounded-lg border hover:bg-red-50 text-red-600 inline-flex items-center gap-1.5">
+                                <button
+                                  onClick={() => deleteItem(it._id)}
+                                  className="px-4 py-2 rounded-lg border hover:bg-red-50 text-red-600 inline-flex items-center gap-1.5"
+                                >
                                   <Trash2 className="h-4 w-4" /> Usuń
                                 </button>
                               </div>
                             </div>
                           ) : (
                             <div className="flex-1 grid grid-cols-1 gap-2 text-sm">
-                              <select value={editing.categoryId} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], categoryId: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2">
-                                {sortedCats.map((sc) => (
-                                  <option key={sc._id} value={sc._id}>{sc.name}</option>
-                                ))}
-                              </select>
-                              <input value={editing.title} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], title: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Tytuł (PL)" />
-                              <textarea value={editing.description} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], description: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Opis (PL)" rows={2} />
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                <input value={editing.titleEn || ""} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], titleEn: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Title (EN)" />
-                                <input value={editing.descriptionEn || ""} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], descriptionEn: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Description (EN)" />
-                              </div>
-
-                              <div className="grid grid-cols-3 gap-2">
-                                <input type="number" value={editing.rozmiarMin} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMin: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Min" />
-                                <input type="number" value={editing.rozmiarMax} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarMax: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Max" />
-                                <input type="number" value={editing.rozmiarGlowny} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozmiarGlowny: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Główny" />
-                                <input
-                                  type="number"
-                                  value={editing.rozSprz}
+                              <div className="flex flex-col">
+                                <span className={FIELD_LABEL_CLASS}>Kategoria</span>
+                                <select
+                                  value={editing.categoryId}
                                   onChange={(e) =>
-                                    setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], rozSprz: e.target.value } }))
+                                    setEditItem((s) => ({
+                                      ...s,
+                                      [it._id]: { ...s[it._id], categoryId: e.target.value },
+                                    }))
                                   }
                                   className="rounded-xl border border-neutral-300 px-3 py-2"
-                                  placeholder="Sprzączka"
+                                >
+                                  {sortedCats.map((sc) => (
+                                    <option key={sc._id} value={sc._id}>
+                                      {sc.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className={FIELD_LABEL_CLASS}>Tytuł (PL)</span>
+                                <input
+                                  value={editing.title}
+                                  onChange={(e) =>
+                                    setEditItem((s) => ({
+                                      ...s,
+                                      [it._id]: { ...s[it._id], title: e.target.value },
+                                    }))
+                                  }
+                                  className="rounded-xl border border-neutral-300 px-3 py-2"
+                                  placeholder="Tytuł (PL)"
                                 />
                               </div>
+
+                              <div className="flex flex-col">
+                                <span className={FIELD_LABEL_CLASS}>Opis (PL)</span>
+                                <textarea
+                                  value={editing.description}
+                                  onChange={(e) =>
+                                    setEditItem((s) => ({
+                                      ...s,
+                                      [it._id]: { ...s[it._id], description: e.target.value },
+                                    }))
+                                  }
+                                  className="rounded-xl border border-neutral-300 px-3 py-2"
+                                  placeholder={isWoodEdit ? "Opis drewnianego produktu (PL)…" : "Opis paska (PL)…"}
+                                  rows={3}
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <div className="flex flex-col">
+                                  <span className={FIELD_LABEL_CLASS}>Title (EN)</span>
+                                  <input
+                                    value={editing.titleEn || ""}
+                                    onChange={(e) =>
+                                      setEditItem((s) => ({
+                                        ...s,
+                                        [it._id]: { ...s[it._id], titleEn: e.target.value },
+                                      }))
+                                    }
+                                    className="rounded-xl border border-neutral-300 px-3 py-2"
+                                    placeholder="Title (EN)"
+                                  />
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className={FIELD_LABEL_CLASS}>Description (EN)</span>
+                                  <textarea
+                                    value={editing.descriptionEn || ""}
+                                    onChange={(e) =>
+                                      setEditItem((s) => ({
+                                        ...s,
+                                        [it._id]: { ...s[it._id], descriptionEn: e.target.value },
+                                      }))
+                                    }
+                                    className="rounded-xl border border-neutral-300 px-3 py-2"
+                                    placeholder={
+                                      isWoodEdit
+                                        ? "Wood product description (EN)…"
+                                        : "Leather belt description (EN)…"
+                                    }
+                                    rows={3}
+                                  />
+                                </div>
+                              </div>
+
+                              {!isWoodEdit && (
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                  <div className="flex flex-col">
+                                    <span className={FIELD_LABEL_CLASS}>Min (cm)</span>
+                                    <input
+                                      type="number"
+                                      value={editing.rozmiarMin}
+                                      onChange={(e) =>
+                                        setEditItem((s) => ({
+                                          ...s,
+                                          [it._id]: { ...s[it._id], rozmiarMin: e.target.value },
+                                        }))
+                                      }
+                                      className="rounded-xl border border-neutral-300 px-3 py-2"
+                                      placeholder="Min"
+                                    />
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className={FIELD_LABEL_CLASS}>Max (cm)</span>
+                                    <input
+                                      type="number"
+                                      value={editing.rozmiarMax}
+                                      onChange={(e) =>
+                                        setEditItem((s) => ({
+                                          ...s,
+                                          [it._id]: { ...s[it._id], rozmiarMax: e.target.value },
+                                        }))
+                                      }
+                                      className="rounded-xl border border-neutral-300 px-3 py-2"
+                                      placeholder="Max"
+                                    />
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className={FIELD_LABEL_CLASS}>Rozmiar główny (cm)</span>
+                                    <input
+                                      type="number"
+                                      value={editing.rozmiarGlowny}
+                                      onChange={(e) =>
+                                        setEditItem((s) => ({
+                                          ...s,
+                                          [it._id]: { ...s[it._id], rozmiarGlowny: e.target.value },
+                                        }))
+                                      }
+                                      className="rounded-xl border border-neutral-300 px-3 py-2"
+                                      placeholder="Główny"
+                                    />
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className={FIELD_LABEL_CLASS}>Sprzączka (cm)</span>
+                                    <input
+                                      type="number"
+                                      value={editing.rozSprz}
+                                      onChange={(e) =>
+                                        setEditItem((s) => ({
+                                          ...s,
+                                          [it._id]: { ...s[it._id], rozSprz: e.target.value },
+                                        }))
+                                      }
+                                      className="rounded-xl border border-neutral-300 px-3 py-2"
+                                      placeholder="Sprzączka"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
                               <div className="grid grid-cols-2 gap-2">
-                                <input type="number" value={editing.cenaPLN} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], cenaPLN: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Cena" />
-                                <input type="number" value={editing.numerPaska} onChange={(e) => setEditItem((s) => ({ ...s, [it._id]: { ...s[it._id], numerPaska: e.target.value } }))} className="rounded-xl border border-neutral-300 px-3 py-2" placeholder="Nr" />
+                                <div className="flex flex-col">
+                                  <span className={FIELD_LABEL_CLASS}>Cena (PLN)</span>
+                                  <input
+                                    type="number"
+                                    value={editing.cenaPLN}
+                                    onChange={(e) =>
+                                      setEditItem((s) => ({
+                                        ...s,
+                                        [it._id]: { ...s[it._id], cenaPLN: e.target.value },
+                                      }))
+                                    }
+                                    className="rounded-xl border border-neutral-300 px-3 py-2"
+                                    placeholder="Cena"
+                                  />
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className={FIELD_LABEL_CLASS}>Numer / kod</span>
+                                  <input
+                                    type="number"
+                                    value={editing.numerPaska}
+                                    onChange={(e) =>
+                                      setEditItem((s) => ({
+                                        ...s,
+                                        [it._id]: { ...s[it._id], numerPaska: e.target.value },
+                                      }))
+                                    }
+                                    className="rounded-xl border border-neutral-300 px-3 py-2"
+                                    placeholder="Nr"
+                                  />
+                                </div>
                               </div>
 
                               {/* ISTNIEJĄCE ZDJĘCIA */}
@@ -1356,21 +1746,35 @@ const isWoodCreate = selectedCat?.slug === "wood";
                                   {editing.images.map((img, i) => (
                                     <div key={i} className="rounded-lg border overflow-hidden">
                                       <div className="relative w-full aspect-[4/3]">
-                                        <Image src={img.url} alt={img.altPl || img.altEn || `img-${i + 1}`} fill className="object-cover" />
+                                        <Image
+                                          src={img.url}
+                                          alt={img.altPl || img.altEn || `img-${i + 1}`}
+                                          fill
+                                          className="object-cover"
+                                        />
                                         <div className="absolute top-2 left-2 flex gap-1">
                                           <button
                                             type="button"
                                             onClick={() =>
                                               setEditItem((s) => {
                                                 const cur = s[it._id];
-                                                const imgs = cur.images.map((m, idx) => ({ ...m, isPrimary: idx === i }));
+                                                const imgs = cur.images.map((m, idx) => ({
+                                                  ...m,
+                                                  isPrimary: idx === i,
+                                                }));
                                                 return { ...s, [it._id]: { ...cur, images: imgs } };
                                               })
                                             }
-                                            className={`px-2 py-1 text-xs rounded ${img.isPrimary ? "bg-yellow-400/90" : "bg-white/80 border"}`}
+                                            className={`px-2 py-1 text-xs rounded ${
+                                              img.isPrimary ? "bg-yellow-400/90" : "bg-white/80 border"
+                                            }`}
                                             title={img.isPrimary ? "Zdjęcie główne" : "Ustaw jako główne"}
                                           >
-                                            {img.isPrimary ? <Star className="h-3.5 w-3.5" /> : <StarOff className="h-3.5 w-3.5" />}
+                                            {img.isPrimary ? (
+                                              <Star className="h-3.5 w-3.5" />
+                                            ) : (
+                                              <StarOff className="h-3.5 w-3.5" />
+                                            )}
                                           </button>
                                         </div>
                                         <div className="absolute top-2 right-2 flex gap-1">
@@ -1383,7 +1787,6 @@ const isWoodCreate = selectedCat?.slug === "wood";
                                                 if (i > 0) {
                                                   [imgs[i - 1], imgs[i]] = [imgs[i], imgs[i - 1]];
                                                 }
-                                                // przelicz ordery
                                                 imgs.forEach((m, idx) => (m.order = idx));
                                                 return { ...s, [it._id]: { ...cur, images: imgs } };
                                               })
@@ -1414,7 +1817,6 @@ const isWoodCreate = selectedCat?.slug === "wood";
                                         </div>
                                       </div>
                                       <div className="p-2 space-y-1">
-                                    
                                         <button
                                           type="button"
                                           className="w-full rounded border px-2 py-1 text-xs hover:bg-red-50 text-red-600"
@@ -1452,7 +1854,12 @@ const isWoodCreate = selectedCat?.slug === "wood";
                                       setEditItem((s) => {
                                         const cur = s[it._id];
                                         const startOrder = cur.images.length + cur.newFiles.length;
-                                        const newMeta = files.map((_, idx) => ({ altPl: "", altEn: "", isPrimary: false, order: startOrder + idx }));
+                                        const newMeta = files.map((_, idx) => ({
+                                          altPl: "",
+                                          altEn: "",
+                                          isPrimary: false,
+                                          order: startOrder + idx,
+                                        }));
                                         return {
                                           ...s,
                                           [it._id]: {
@@ -1468,12 +1875,11 @@ const isWoodCreate = selectedCat?.slug === "wood";
                                   <ImageIcon className="h-5 w-5" /> Dodaj zdjęcia
                                 </label>
 
-                                {/* podgląd nowych */}
                                 {editing.newPreviews.length > 0 && (
                                   <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
                                     {editing.newPreviews.map((src, i) => {
                                       const meta = editing.newMeta[i] || {};
-                                      const absoluteIndex = i; // w nowej paczce
+                                      const absoluteIndex = i;
                                       return (
                                         <div key={i} className="rounded-lg border overflow-hidden">
                                           <div className="relative w-full aspect-[4/3]">
@@ -1484,16 +1890,24 @@ const isWoodCreate = selectedCat?.slug === "wood";
                                                 onClick={() =>
                                                   setEditItem((s) => {
                                                     const cur = s[it._id];
-                                                    const nm = cur.newMeta.map((m, idx) => ({ ...m, isPrimary: idx === absoluteIndex }));
-                                                    // kasujemy primary w istniejących
+                                                    const nm = cur.newMeta.map((m, idx) => ({
+                                                      ...m,
+                                                      isPrimary: idx === absoluteIndex,
+                                                    }));
                                                     const imgs = cur.images.map((m) => ({ ...m, isPrimary: false }));
                                                     return { ...s, [it._id]: { ...cur, images: imgs, newMeta: nm } };
                                                   })
                                                 }
-                                                className={`px-2 py-1 text-xs rounded ${meta.isPrimary ? "bg-yellow-400/90" : "bg-white/80 border"}`}
+                                                className={`px-2 py-1 text-xs rounded ${
+                                                  meta.isPrimary ? "bg-yellow-400/90" : "bg-white/80 border"
+                                                }`}
                                                 title={meta.isPrimary ? "Zdjęcie główne" : "Ustaw jako główne"}
                                               >
-                                                {meta.isPrimary ? <Star className="h-3.5 w-3.5" /> : <StarOff className="h-3.5 w-3.5" />}
+                                                {meta.isPrimary ? (
+                                                  <Star className="h-3.5 w-3.5" />
+                                                ) : (
+                                                  <StarOff className="h-3.5 w-3.5" />
+                                                )}
                                               </button>
                                             </div>
                                           </div>
@@ -1538,7 +1952,15 @@ const isWoodCreate = selectedCat?.slug === "wood";
                                                   np.splice(i, 1);
                                                   nm.splice(i, 1);
                                                   nm.forEach((m, idx) => (m.order = cur.images.length + idx));
-                                                  return { ...s, [it._id]: { ...cur, newFiles: nf, newPreviews: np, newMeta: nm } };
+                                                  return {
+                                                    ...s,
+                                                    [it._id]: {
+                                                      ...cur,
+                                                      newFiles: nf,
+                                                      newPreviews: np,
+                                                      newMeta: nm,
+                                                    },
+                                                  };
                                                 })
                                               }
                                             >
@@ -1553,10 +1975,16 @@ const isWoodCreate = selectedCat?.slug === "wood";
                               </div>
 
                               <div className="mt-2 flex flex-wrap gap-2">
-                                <button onClick={() => saveItem(it._id)} className="px-4 py-2 rounded-lg border hover:bg-green-50 text-green-700 inline-flex items-center gap-1.5">
+                                <button
+                                  onClick={() => saveItem(it._id)}
+                                  className="px-4 py-2 rounded-lg border hover:bg-green-50 text-green-700 inline-flex items-center gap-1.5"
+                                >
                                   <Save className="h-4 w-4" /> Zapisz
                                 </button>
-                                <button onClick={() => cancelEditItem(it._id)} className="px-4 py-2 rounded-lg border hover:bg-neutral-50 inline-flex items-center gap-1.5">
+                                <button
+                                  onClick={() => cancelEditItem(it._id)}
+                                  className="px-4 py-2 rounded-lg border hover:bg-neutral-50 inline-flex items-center gap-1.5"
+                                >
                                   <X className="h-4 w-4" /> Anuluj
                                 </button>
                               </div>
@@ -1565,7 +1993,9 @@ const isWoodCreate = selectedCat?.slug === "wood";
                         </div>
                       );
                     })}
-                    {its.length === 0 && <div className="text-sm text-neutral-500">Brak przedmiotów w tej kategorii</div>}
+                    {its.length === 0 && (
+                      <div className="text-sm text-neutral-500">Brak przedmiotów w tej kategorii</div>
+                    )}
                   </div>
                 </div>
               );
@@ -1578,23 +2008,41 @@ const isWoodCreate = selectedCat?.slug === "wood";
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-medium">{UI_STRINGS[previewLang].preview}</h2>
             <div className="flex items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-1.5 py-1">
-              <button onClick={() => setPreviewLang("pl")} aria-pressed={previewLang === "pl"} title="Polski" className={`inline-flex items-center justify-center rounded-md p-1.5 ${previewLang === "pl" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}>
+              <button
+                onClick={() => setPreviewLang("pl")}
+                aria-pressed={previewLang === "pl"}
+                title="Polski"
+                className={`inline-flex items-center justify-center rounded-md p-1.5 ${
+                  previewLang === "pl" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"
+                }`}
+              >
                 <Image src="/images/poland.png" alt="" width={20} height={14} className="rounded-[2px]" />
               </button>
-              <button onClick={() => setPreviewLang("en")} aria-pressed={previewLang === "en"} title="English" className={`inline-flex items-center justify-center rounded-md p-1.5 ${previewLang === "en" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"}`}>
+              <button
+                onClick={() => setPreviewLang("en")}
+                aria-pressed={previewLang === "en"}
+                title="English"
+                className={`inline-flex items-center justify-center rounded-md p-1.5 ${
+                  previewLang === "en" ? "bg-[#f5f5ef]" : "hover:bg-neutral-100"
+                }`}
+              >
                 <Image src="/images/england.png" alt="" width={20} height={14} className="rounded-[2px]" />
               </button>
             </div>
           </div>
 
           <div className="space-y-16">
-            {groupedForPreview.filter((g) => g.belts.length).map((g, idx) => (
-              <div key={idx}>
-                <CategoryPreview title={g.title} belts={g.belts} lang={previewLang} />
-                <div className="mt-6 mx-auto w-full h-px bg-neutral-200" />
-              </div>
-            ))}
-            {groupedForPreview.every((g) => !g.belts.length) && <div className="text-sm text-neutral-500">Brak danych do podglądu</div>}
+            {groupedForPreview
+              .filter((g) => g.belts.length)
+              .map((g, idx) => (
+                <div key={idx}>
+                  <CategoryPreview title={g.title} belts={g.belts} lang={previewLang} />
+                  <div className="mt-6 mx-auto w-full h-px bg-neutral-200" />
+                </div>
+              ))}
+            {groupedForPreview.every((g) => !g.belts.length) && (
+              <div className="text-sm text-neutral-500">Brak danych do podglądu</div>
+            )}
           </div>
         </section>
 
