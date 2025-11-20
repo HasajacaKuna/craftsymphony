@@ -1574,72 +1574,147 @@ export default function AdminPage() {
                                 </select>
                               </div>
 
-                              <div className="flex flex-col">
-                                <span className={FIELD_LABEL_CLASS}>Tytuł (PL)</span>
-                                <input
-                                  value={editing.title}
-                                  onChange={(e) =>
-                                    setEditItem((s) => ({
-                                      ...s,
-                                      [it._id]: { ...s[it._id], title: e.target.value },
-                                    }))
-                                  }
-                                  className="rounded-xl border border-neutral-300 px-3 py-2"
-                                  placeholder="Tytuł (PL)"
-                                />
-                              </div>
+{/* TYTUŁ + OPIS – układ zależny od kategorii WOOD */}
+{isWoodEdit ? (
+  <>
+    {/* Tytuł PL + EN w jednej linii po 50% */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <div className="flex flex-col">
+        <span className={FIELD_LABEL_CLASS}>Tytuł (PL)</span>
+        <input
+          value={editing.title}
+          onChange={(e) =>
+            setEditItem((s) => ({
+              ...s,
+              [it._id]: { ...s[it._id], title: e.target.value },
+            }))
+          }
+          className="rounded-xl border border-neutral-300 px-3 py-2"
+          placeholder="Tytuł (PL)"
+        />
+      </div>
 
-                              <div className="flex flex-col">
-                                <span className={FIELD_LABEL_CLASS}>Opis (PL)</span>
-                                <textarea
-                                  value={editing.description}
-                                  onChange={(e) =>
-                                    setEditItem((s) => ({
-                                      ...s,
-                                      [it._id]: { ...s[it._id], description: e.target.value },
-                                    }))
-                                  }
-                                  className="rounded-xl border border-neutral-300 px-3 py-2"
-                                  placeholder={isWoodEdit ? "Opis drewnianego produktu (PL)…" : "Opis paska (PL)…"}
-                                  rows={3}
-                                />
-                              </div>
+      <div className="flex flex-col">
+        <span className={FIELD_LABEL_CLASS}>Title (EN)</span>
+        <input
+          value={editing.titleEn || ""}
+          onChange={(e) =>
+            setEditItem((s) => ({
+              ...s,
+              [it._id]: { ...s[it._id], titleEn: e.target.value },
+            }))
+          }
+          className="rounded-xl border border-neutral-300 px-3 py-2"
+          placeholder="Title (EN)"
+        />
+      </div>
+    </div>
 
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                <div className="flex flex-col">
-                                  <span className={FIELD_LABEL_CLASS}>Title (EN)</span>
-                                  <input
-                                    value={editing.titleEn || ""}
-                                    onChange={(e) =>
-                                      setEditItem((s) => ({
-                                        ...s,
-                                        [it._id]: { ...s[it._id], titleEn: e.target.value },
-                                      }))
-                                    }
-                                    className="rounded-xl border border-neutral-300 px-3 py-2"
-                                    placeholder="Title (EN)"
-                                  />
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className={FIELD_LABEL_CLASS}>Description (EN)</span>
-                                  <textarea
-                                    value={editing.descriptionEn || ""}
-                                    onChange={(e) =>
-                                      setEditItem((s) => ({
-                                        ...s,
-                                        [it._id]: { ...s[it._id], descriptionEn: e.target.value },
-                                      }))
-                                    }
-                                    className="rounded-xl border border-neutral-300 px-3 py-2"
-                                    placeholder={
-                                      isWoodEdit
-                                        ? "Wood product description (EN)…"
-                                        : "Leather belt description (EN)…"
-                                    }
-                                    rows={3}
-                                  />
-                                </div>
-                              </div>
+    {/* Opis PL, a POD NIM opis EN na pełną szerokość */}
+    <div className="flex flex-col">
+      <span className={FIELD_LABEL_CLASS}>Opis (PL)</span>
+      <textarea
+        value={editing.description}
+        onChange={(e) =>
+          setEditItem((s) => ({
+            ...s,
+            [it._id]: { ...s[it._id], description: e.target.value },
+          }))
+        }
+        className="rounded-xl border border-neutral-300 px-3 py-2"
+        placeholder="Opis drewnianego produktu (PL)…"
+        rows={3}
+      />
+    </div>
+
+    <div className="flex flex-col">
+      <span className={FIELD_LABEL_CLASS}>Description (EN)</span>
+      <textarea
+        value={editing.descriptionEn || ""}
+        onChange={(e) =>
+          setEditItem((s) => ({
+            ...s,
+            [it._id]: { ...s[it._id], descriptionEn: e.target.value },
+          }))
+        }
+        className="rounded-xl border border-neutral-300 px-3 py-2"
+        placeholder="Wood product description (EN)…"
+        rows={3}
+      />
+    </div>
+  </>
+) : (
+  <>
+    {/* dotychczasowy układ dla innych kategorii */}
+    <div className="flex flex-col">
+      <span className={FIELD_LABEL_CLASS}>Tytuł (PL)</span>
+      <input
+        value={editing.title}
+        onChange={(e) =>
+          setEditItem((s) => ({
+            ...s,
+            [it._id]: { ...s[it._id], title: e.target.value },
+          }))
+        }
+        className="rounded-xl border border-neutral-300 px-3 py-2"
+        placeholder="Tytuł (PL)"
+      />
+    </div>
+
+    <div className="flex flex-col">
+      <span className={FIELD_LABEL_CLASS}>Opis (PL)</span>
+      <textarea
+        value={editing.description}
+        onChange={(e) =>
+          setEditItem((s) => ({
+            ...s,
+            [it._id]: { ...s[it._id], description: e.target.value },
+          }))
+        }
+        className="rounded-xl border border-neutral-300 px-3 py-2"
+        placeholder={isWoodEdit ? "Opis drewnianego produktu (PL)…" : "Opis paska (PL)…"}
+        rows={3}
+      />
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <div className="flex flex-col">
+        <span className={FIELD_LABEL_CLASS}>Title (EN)</span>
+        <input
+          value={editing.titleEn || ""}
+          onChange={(e) =>
+            setEditItem((s) => ({
+              ...s,
+              [it._id]: { ...s[it._id], titleEn: e.target.value },
+            }))
+          }
+          className="rounded-xl border border-neutral-300 px-3 py-2"
+          placeholder="Title (EN)"
+        />
+      </div>
+      <div className="flex flex-col">
+        <span className={FIELD_LABEL_CLASS}>Description (EN)</span>
+        <textarea
+          value={editing.descriptionEn || ""}
+          onChange={(e) =>
+            setEditItem((s) => ({
+              ...s,
+              [it._id]: { ...s[it._id], descriptionEn: e.target.value },
+            }))
+          }
+          className="rounded-xl border border-neutral-300 px-3 py-2"
+          placeholder={
+            isWoodEdit
+              ? "Wood product description (EN)…"
+              : "Leather belt description (EN)…"
+          }
+          rows={3}
+        />
+      </div>
+    </div>
+  </>
+)}
+
 
                               {!isWoodEdit && (
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
