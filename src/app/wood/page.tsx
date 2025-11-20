@@ -558,14 +558,22 @@ const shouldShowPrice =
     </p>
   </div>
 
+<p
+  className={
+    "mt-6 text-center text-[13px] text-neutral-600 mb-16 italic" +
+    (shouldShowPrice ? "" : " invisible")
+  }
+>
   {shouldShowPrice && (
-    <p className="mt-6 text-center text-[13px] text-neutral-600 mb-16 italic">
+    <>
       {labels.price}{" "}
       <span className="font-medium tracking-wide">
         {formatPriceForLang(current?.price, lang)}
       </span>
-    </p>
+    </>
   )}
+</p>
+
 </div>
 
     </div>

@@ -1679,7 +1679,7 @@ export default function AdminPage() {
 
     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
       <div className="flex flex-col">
-        <span className={FIELD_LABEL_CLASS}>Title (EN)</span>
+        <span className={FIELD_LABEL_CLASS}>Tytul (EN)</span>
         <input
           value={editing.titleEn || ""}
           onChange={(e) =>
@@ -1693,7 +1693,7 @@ export default function AdminPage() {
         />
       </div>
       <div className="flex flex-col">
-        <span className={FIELD_LABEL_CLASS}>Description (EN)</span>
+        <span className={FIELD_LABEL_CLASS}>Opis (EN)</span>
         <textarea
           value={editing.descriptionEn || ""}
           onChange={(e) =>
