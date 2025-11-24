@@ -108,6 +108,8 @@ const UI_STRINGS: Record<
     matching: string;
     any: string;
 
+    messagePlaceholder: string;
+
     /* NEW: modal */
     successTitle: string;
     successText: string;
@@ -127,6 +129,7 @@ const UI_STRINGS: Record<
     emailPlaceholder: "Twój e-mail",
     beltNoPlaceholder: "Nr paska",
     submit: "Wyślij zapytanie",
+    messagePlaceholder: "Twoja wiadomość (np. rozmiar, kolor, pytania)…",
     price: "Cena:",
     mainSize: "Długość paska",
     buckleSize: "Szerokość klamry",
@@ -160,6 +163,7 @@ const UI_STRINGS: Record<
     selectBelt: "Select belt no.",
     heroAltPrefix: "Belt",
     schemaAlt: "Belt diagram — size",
+    messagePlaceholder: "Your message (size, colour, questions)…",
     numberLabel: "No.",
     interestedHeading: "Interested in a belt?",
     interestedText:
@@ -1335,64 +1339,75 @@ useEffect(() => {
                     {t.interestedText}
                   </p>
 
-                  {/* ✅ FormSubmit → wysyła na contact@craftsymphony.com i wraca z ?sent=1 */}
-                  <form
-                    action="https://formsubmit.co/contact@craftsymphony.com"
-                    method="POST"
-                    className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
-                  >
-                    {/* Opcje FormSubmit */}
-                    <input type="hidden" name="_captcha" value="false" />
-                    <input type="hidden" name="_template" value="table" />
-                    <input type="hidden" name="_next" value={nextUrl} />
-                    <input
-                      type="hidden"
-                      name="_subject"
-                      value={`${
-                        lang === "pl" ? "[SKÓRA]" : "[LEATHER]"
-                      } Nowe zapytanie ze strony`}
-                    />
-                    {/* materiał w treści maila */}
-                    <input
-                      type="hidden"
-                      name="material"
-                      value={lang === "pl" ? "Skóra" : "Leather"}
-                    />
-                    {/* Honeypot (anty-spam) */}
-                    <input
-                      type="text"
-                      name="_honey"
-                      className="hidden"
-                      tabIndex={-1}
-                      autoComplete="off"
-                    />
+<form
+  action="https://formsubmit.co/contact@craftsymphony.com"
+  method="POST"
+  className="mt-5 flex flex-col gap-3 justify-center items-center px-2"
+>
+  {/* Opcje FormSubmit */}
+  <input type="hidden" name="_captcha" value="false" />
+  <input type="hidden" name="_template" value="table" />
+  <input type="hidden" name="_next" value={nextUrl} />
+  <input
+    type="hidden"
+    name="_subject"
+    value={`${
+      lang === "pl" ? "[SKÓRA]" : "[LEATHER]"
+    } Nowe zapytanie ze strony`}
+  />
+  <input
+    type="hidden"
+    name="material"
+    value={lang === "pl" ? "Skóra" : "Leather"}
+  />
+  <input
+    type="text"
+    name="_honey"
+    className="hidden"
+    tabIndex={-1}
+    autoComplete="off"
+  />
 
-                    <input
-                      name="email"
-                      type="email"
-                      required
-                      placeholder={t.emailPlaceholder}
-                      className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-                      aria-label={t.emailPlaceholder}
-                    />
-                    <input
-                      name="beltNo"
-                      type="number"
-                      min={1}
-                      max={999999}
-                      required
-                      placeholder={t.beltNoPlaceholder}
-                      aria-label={t.beltNoPlaceholder}
-                      className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-                    />
+  {/* Email + numer w jednym rzędzie na desktopie */}
+  <div className="w-full flex flex-col sm:flex-row gap-3 justify-center">
+    <input
+      name="email"
+      type="email"
+      required
+      placeholder={t.emailPlaceholder}
+      className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+      aria-label={t.emailPlaceholder}
+    />
+    <input
+      name="beltNo"
+      type="number"
+      min={1}
+      max={999999}
+      required
+      placeholder={t.beltNoPlaceholder}
+      aria-label={t.beltNoPlaceholder}
+      className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+    />
+  </div>
 
-                    <button
-                      type="submit"
-                      className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition"
-                    >
-                      {t.submit}
-                    </button>
-                  </form>
+  {/* NOWE: pole na wiadomość */}
+  <textarea
+    name="message"
+    required
+    rows={4}
+    placeholder={t.messagePlaceholder}
+    aria-label={t.messagePlaceholder}
+    className="w-full max-w-xl rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+  />
+
+  <button
+    type="submit"
+    className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition"
+  >
+    {t.submit}
+  </button>
+</form>
+
                 </div>
 
                 {/* Obraz o rzemiośle */}
