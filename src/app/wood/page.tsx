@@ -83,6 +83,8 @@ type Labels = {
   loading: string;
   empty: string;
 
+   messagePlaceholder: string;
+
   /* Modal */
   successTitle: string;
   successText: string;
@@ -106,6 +108,7 @@ const UI_STRINGS: Record<Lang, Labels> = {
       "Każdy produkt z drewna powstaje w 100% ręcznie — od selekcji materiału, przez precyzyjną obróbkę i kształtowanie, aż po finalne szlifowanie i wykończenie powierzchni. Pracujemy z naturalnym surowcem, którego charakter i rysunek słojów czynią każdy egzemplarz unikatowym. Każdy detal tworzony jest z dbałością o estetykę, ergonomię oraz trwałość. Wierzymy w rzemiosło z duszą: w przedmioty, które dojrzewają z użytkowaniem, nabierają blasku i stają się częścią codziennych rytuałów. Naszym celem jest ponadczasowa forma zakorzeniona w tradycji, lecz wykonana z nowoczesną precyzją i szacunkiem do natury.",
     loading: "Ładowanie katalogu…",
     empty: "Brak produktów do wyświetlenia.",
+    messagePlaceholder: "Twoja wiadomość (np. rozmiar, kolor, pytania)…",
 
     successTitle: "Dziękujemy za wiadomość!",
     successText:
@@ -118,6 +121,7 @@ const UI_STRINGS: Record<Lang, Labels> = {
     heroAltPrefix: "Product",
     numberLabel: "No.",
     price: "Price:",
+    messagePlaceholder: "Your message (size, colour, questions)…",
     interestedHeading: "Interested?",
     interestedText:
       "Leave your email and product number — we’ll get back to you.",
@@ -741,61 +745,75 @@ export default function WoodPage() {
             </p>
 
             <form
-              action="https://formsubmit.co/contact@craftsymphony.com"
-              method="POST"
-              className="mt-5 flex flex-col sm:flex-row gap-3 justify-center items-center px-2"
-            >
-              {/* Opcje FormSubmit */}
-              <input type="hidden" name="_captcha" value="false" />
-              <input type="hidden" name="_template" value="table" />
-              <input type="hidden" name="_next" value={nextUrl} />
-              <input
-                type="hidden"
-                name="_subject"
-                value={`${
-                  lang === "pl" ? "[DREWNO]" : "[WOOD]"
-                } Nowe zapytanie produktowe ze strony`}
-              />
-              <input
-                type="hidden"
-                name="material"
-                value={lang === "pl" ? "Drewno" : "Wood"}
-              />
-              {/* Honeypot */}
-              <input
-                type="text"
-                name="_honey"
-                className="hidden"
-                tabIndex={-1}
-                autoComplete="off"
-              />
+  action="https://formsubmit.co/contact@craftsymphony.com"
+  method="POST"
+  className="mt-5 flex flex-col gap-3 justify-center items-center px-2"
+>
+  {/* Opcje FormSubmit */}
+  <input type="hidden" name="_captcha" value="false" />
+  <input type="hidden" name="_template" value="table" />
+  <input type="hidden" name="_next" value={nextUrl} />
+  <input
+    type="hidden"
+    name="_subject"
+    value={`${
+      lang === "pl" ? "[DREWNO]" : "[WOOD]"
+    } Nowe zapytanie produktowe ze strony`}
+  />
+  <input
+    type="hidden"
+    name="material"
+    value={lang === "pl" ? "Drewno" : "Wood"}
+  />
+  {/* Honeypot */}
+  <input
+    type="text"
+    name="_honey"
+    className="hidden"
+    tabIndex={-1}
+    autoComplete="off"
+  />
 
-              <input
-                name="email"
-                type="email"
-                required
-                placeholder={t.emailPlaceholder}
-                className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-                aria-label={t.emailPlaceholder}
-              />
-              <input
-                name="productNo"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]{1,6}"
-                required
-                placeholder={t.productNoPlaceholder}
-                aria-label={t.productNoPlaceholder}
-                className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
-              />
+  {/* E-mail + numer produktu w jednym rzędzie (desktop) */}
+  <div className="w-full flex flex-col sm:flex-row gap-3 justify-center">
+    <input
+      name="email"
+      type="email"
+      required
+      placeholder={t.emailPlaceholder}
+      className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+      aria-label={t.emailPlaceholder}
+    />
+    <input
+      name="productNo"
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]{1,6}"
+      required
+      placeholder={t.productNoPlaceholder}
+      aria-label={t.productNoPlaceholder}
+      className="w-full sm:w-40 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+    />
+  </div>
 
-              <button
-                type="submit"
-                className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition disabled:opacity-50"
-              >
-                {t.submit}
-              </button>
-            </form>
+  {/* NOWE: pole na wiadomość */}
+  <textarea
+    name="message"
+    required
+    rows={4}
+    placeholder={t.messagePlaceholder}
+    aria-label={t.messagePlaceholder}
+    className="w-full max-w-xl rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+  />
+
+  <button
+    type="submit"
+    className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition disabled:opacity-50"
+  >
+    {t.submit}
+  </button>
+</form>
+
           </div>
 
           {/* Obraz + opis na dole */}
