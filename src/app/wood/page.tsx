@@ -744,10 +744,10 @@ export default function WoodPage() {
               {t.interestedText}
             </p>
 
-            <form
+      <form
   action="https://formsubmit.co/contact@craftsymphony.com"
   method="POST"
-  className="mt-5 flex flex-col gap-3 justify-center items-center px-2"
+  className="mt-5 flex flex-col items-center gap-3 px-2"
 >
   {/* Opcje FormSubmit */}
   <input type="hidden" name="_captcha" value="false" />
@@ -775,13 +775,13 @@ export default function WoodPage() {
   />
 
   {/* E-mail + numer produktu w jednym rzędzie (desktop) */}
-  <div className="w-full flex flex-col sm:flex-row gap-3 justify-center">
+  <div className="w-full max-w-xl flex flex-col sm:flex-row gap-3">
     <input
       name="email"
       type="email"
       required
       placeholder={t.emailPlaceholder}
-      className="w-full sm:w-80 rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
+      className="w-full rounded-xl border-2 border-neutral-300 bg-[#f5f5ef] text-neutral-900 placeholder-neutral-500 px-4 py-3 outline-none focus:ring-2 focus:ring-neutral-900/20"
       aria-label={t.emailPlaceholder}
     />
     <input
@@ -796,7 +796,7 @@ export default function WoodPage() {
     />
   </div>
 
-  {/* NOWE: pole na wiadomość */}
+  {/* Pole na wiadomość – ta sama szerokość */}
   <textarea
     name="message"
     required
@@ -808,7 +808,7 @@ export default function WoodPage() {
 
   <button
     type="submit"
-    className="w-full sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition disabled:opacity-50"
+    className="w-full max-w-xl sm:w-auto px-6 py-3 bg-neutral-900 rounded-xl border border-neutral-900 text-white hover:bg-neutral-800 transition disabled:opacity-50"
   >
     {t.submit}
   </button>
