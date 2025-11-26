@@ -114,6 +114,12 @@ const UI_STRINGS: Record<
     successTitle: string;
     successText: string;
     ok: string;
+
+        /* NEW: construction popup */
+    constructionTitle: string;
+    constructionText: string;
+    constructionTeam: string;
+    closePopup: string;
   }
 > = {
   pl: {
@@ -129,7 +135,7 @@ const UI_STRINGS: Record<
     emailPlaceholder: "Twój e-mail",
     beltNoPlaceholder: "Nr paska",
     submit: "Wyślij zapytanie",
-    messagePlaceholder: "Twoja wiadomość (np. rozmiar, kolor, pytania)…",
+    messagePlaceholder: "Twoja wiadomość ...",
     price: "Cena:",
     mainSize: "Długość paska",
     buckleSize: "Szerokość klamry",
@@ -156,6 +162,13 @@ const UI_STRINGS: Record<
     successText:
       "Odezwiemy się najszybciej jak to możliwe. Sprawdź skrzynkę — wkrótce dostaniesz od nas odpowiedź.",
     ok: "OK, super",
+
+        /* NEW: construction popup */
+    constructionTitle: "Strona w budowie",
+    constructionText:
+      "Ta część Craft Symphony jest wciąż w przygotowaniu. Pracujemy nad nią z dbałością o każdy detal.",
+    constructionTeam: "Zapraszamy ponownie w najbliższej przyszłości. Zespół Craft Symphony",
+    closePopup: "Wejdź na stronę",
   },
   en: {
     navLeather: "Leather",
@@ -163,7 +176,7 @@ const UI_STRINGS: Record<
     selectBelt: "Select belt no.",
     heroAltPrefix: "Belt",
     schemaAlt: "Belt diagram — size",
-    messagePlaceholder: "Your message (size, colour, questions)…",
+    messagePlaceholder: "Your message …",
     numberLabel: "No.",
     interestedHeading: "Interested in a belt?",
     interestedText:
@@ -197,6 +210,13 @@ const UI_STRINGS: Record<
     successText:
       "We’ll get back to you as soon as possible. Please keep an eye on your inbox.",
     ok: "Great",
+
+        /* NEW: construction popup */
+    constructionTitle: "Page under construction",
+    constructionText:
+      "This part of Craft Symphony is still in the making. We’re crafting it with attention to every detail.",
+    constructionTeam: "Please visit us again soon. Craft Symphony Team",
+    closePopup: "Enter the site",
   },
 };
 
@@ -842,6 +862,115 @@ function CategorySection({
   );
 }
 
+/* ===== Popup: Strona w budowie / Under construction ===== */
+function ConstructionPopup({
+  open,
+  onClose,
+  logo,
+  t,
+}: {
+  open: boolean;
+  onClose: () => void;
+  logo: string;
+  t: Labels;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    if (open) {
+      document.addEventListener("keydown", onKey);
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.removeEventListener("keydown", onKey);
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="construction-title"
+    >
+      {/* tło */}
+      <div
+        className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* karta */}
+      <motion.div
+        ref={ref}
+        initial={{ opacity: 0, scale: 0.96, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+        className="
+          relative w-full max-w-md
+          rounded-3xl bg-[#f5f5ef] text-neutral-900
+          shadow-2xl border border-neutral-200
+          px-6 py-7
+        "
+      >
+        {/* Logo na górze */}
+        <div className="flex justify-center mb-4">
+          <div className="relative h-10 w-40">
+            <Image
+              src={logo}
+              alt="Craft Symphony logo"
+              fill
+              sizes="160px"
+              className="object-contain"
+            />
+          </div>
+        </div>
+
+        {/* treść */}
+        <h2
+          id="construction-title"
+          className="text-lg md:text-xl font-serif tracking-wide text-center"
+        >
+          {t.constructionTitle}
+        </h2>
+
+        <p className="mt-3 text-sm text-neutral-700 text-center leading-relaxed">
+          {t.constructionText}
+        </p>
+
+        <p className="mt-3 text-xs text-neutral-500 text-center italic">
+          {t.constructionTeam}
+        </p>
+
+        {/* przycisk zamknięcia */}
+        <div className="mt-6 flex justify-center">
+          <button
+            type="button"
+            onClick={onClose}
+            className="
+              inline-flex items-center justify-center
+              px-6 py-2.5
+              rounded-full
+              bg-neutral-900 text-white
+              text-sm font-medium tracking-wide
+              hover:bg-neutral-800
+              transition
+              shadow-sm
+            "
+          >
+            {t.closePopup}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+
 /* ===== Prosty modal „Dziękujemy” ===== */
 function Modal({
   open,
@@ -932,6 +1061,9 @@ export default function LuxuryLanding({
 
   // 🔹 TU – licznik odwiedzin
   const [visitCount, setVisitCount] = useState<number | null>(null);
+
+  const [showConstruction, setShowConstruction] = useState(true);
+
 
 useEffect(() => {
   (async () => {
@@ -1729,6 +1861,20 @@ useEffect(() => {
         text={t.successText}
         okLabel={t.ok}
       />
+
+            {/* POPUP: Strona w budowie / Under construction */}
+      <ConstructionPopup
+        open={showConstruction}
+        onClose={() => {
+          setShowConstruction(false);
+          try {
+            localStorage.setItem("cs_construction_closed", "1");
+          } catch {}
+        }}
+        logo={logo}
+        t={t}
+      />
+
     </div>
   );
 }
